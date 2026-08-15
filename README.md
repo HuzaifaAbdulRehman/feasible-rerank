@@ -39,20 +39,29 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    scores 0.475 ± 0.030 NDCG against 0.692 ± 0.038 for the fixed solvers — a gap of
    more than five standard deviations.
 2. **The choice of `λ` and `μ` decides the QUBO-vs-classical comparison, and it decides
-   it by more than the methods differ.** At `λ=0, μ=1`, `qubo_tabu` beats group-quota
-   MMR on **both** NDCG (0.887 ± 0.007 vs 0.851 ± 0.020) and exposure parity
-   (0.200 ± 0.002 vs 0.258 ± 0.003), with non-overlapping ranges across 5 seeds on both
-   axes. At `λ=4, μ=0` — the same solver, the same data — it loses on everything. An
-   earlier version of this README reported only the second configuration and concluded
-   the classical baseline wins. That conclusion was an artifact of comparing a QUBO with
-   its fairness term switched off against a baseline with quotas built in.
-3. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
-   wins intra-list similarity outright. The win in (2) is real but narrow, and it
-   belongs to `qubo_tabu` specifically: `qubo_feasible` at the same operating point
-   scores *below* the baseline, despite being given ~2.4× the wall-clock.
+   it by more than the methods differ.** At `λ=4, μ=0` — the configuration this repo's
+   headline benchmark uses — every QUBO variant loses to group-quota MMR on essentially
+   everything. At `λ=0, μ=1` it does not. An earlier version of this README reported
+   only the first and concluded the classical baseline wins; that was an artifact of
+   comparing a QUBO with its fairness term switched **off** against a baseline with
+   group quotas built in.
+3. **Under a protocol that tunes every method on one half of the users and scores it on
+   the other, the QUBO's advantage is not accuracy — it is feasibility.** At a fairness
+   requirement of `τ ≤ 0.25`, no classical baseline can satisfy the constraint at *any*
+   setting of its own hyperparameters, while `qubo_tabu` can and still returns NDCG
+   0.904. Loosen the requirement to `τ ≥ 0.30` and quota-MMR becomes feasible and ties:
+   0.9033 ± 0.0115 against 0.9043 ± 0.0109 — a gap of 0.001 against a spread of 0.011.
+4. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
+   wins intra-list similarity outright.
 
-(1) is why (2) is worth trusting: without the barrier fix the solver never optimises
+(1) is why (3) is worth trusting: without the barrier fix the solver never optimises
 well enough for the operating point to matter. Numbers in [Results](#results).
+
+> An intermediate version of this file claimed the QUBO beat quota-MMR on NDCG as well.
+> That margin was measured with `λ` and `μ` selected on the same dataset they were
+> scored on, and it **did not survive** the disjoint-split protocol. What survived is
+> (3), which is a narrower claim and a more useful one — it says *when* to reach for a
+> QUBO rather than that it is better.
 
 ### 1. The penalty encoding breaks the sampler
 
@@ -124,9 +133,17 @@ Re-run at `λ=0, μ=1` — the region the sweep pointed at — over 5 seeds, 60 
 | qubo_feasible | 0.8319 ± 0.0039 | **0.1999 ± 0.0024** | 0.0151 ± 0.0015 | 38.91 ± 3.63 |
 
 `qubo_tabu`'s NDCG range `[0.876, 0.893]` and `quota_mmr`'s `[0.814, 0.863]` do not
-overlap; neither do the parity ranges, `[0.197, 0.202]` against `[0.254, 0.262]`. So on
-the two axes the task is actually about — accuracy and group exposure — the QUBO wins,
-and the win survives resampling the users five times.
+overlap; neither do the parity ranges, `[0.197, 0.202]` against `[0.254, 0.262]`.
+
+> **The NDCG half of that does not survive.** Both methods here are being run at fixed
+> weights — `λ=0, μ=1` for the QUBO, `mmr_lam=0.5` for the baseline — and the QUBO's
+> came from inspecting a sweep while the baseline's is simply the repo default. Tune
+> both properly, on users held out from the scoring, and `quota_mmr` reaches
+> 0.9033 ± 0.0115 against `qubo_tabu`'s 0.9043 ± 0.0109: a tie. The parity gap does
+> survive. See [Tuning and evaluation on disjoint users](#tuning-and-evaluation-on-disjoint-users),
+> which is the comparison to read. This section is kept because the `λ=4, μ=0` versus
+> `λ=0, μ=1` contrast is still the clearest demonstration of how much the operating
+> point matters.
 
 Three things stop this being a rescue of the method:
 
@@ -235,13 +252,16 @@ QUBO from `qubo_sa`'s 0.475 NDCG, but at `λ=4, μ=0` they rescue it into second
 **This is the wrong operating point, and it is the one this config picks.** `μ=0` means
 the fairness term is off, so the QUBO is being scored on group exposure parity while
 having been given no reason to optimise it. [Section 2](#2-the-operating-point-decides-the-comparison)
-re-runs the comparison at `λ=0, μ=1`, where `qubo_tabu` beats `quota_mmr` on NDCG and
-parity simultaneously with non-overlapping ranges. Both tables are real; the difference
-between them is a configuration choice, and it is larger than the difference between the
-methods.
+re-runs it at `λ=0, μ=1`, where the picture reverses. Both tables are real; the
+difference between them is a configuration choice, and it is larger than the difference
+between the methods.
 
 The table is kept at `λ=4, μ=0` rather than quietly re-run at the flattering setting,
 because the gap between the two is the most useful thing on this page.
+
+For the comparison that settles it — every method tuned under the same rule on users
+held out from the scoring — see
+[Tuning and evaluation on disjoint users](#tuning-and-evaluation-on-disjoint-users).
 
 Where the QUBO does win — Gini, catalogue coverage, intra-list similarity, AI-F — deserves
 scepticism rather than celebration. Every one of those is improved by *spreading selections
@@ -303,6 +323,74 @@ to 0.444 as λ rises 0 → 4. Spreading a list across dissimilar items is not th
 giving individual items their due exposure, and optimising the first can damage the
 second.
 
+### Tuning and evaluation on disjoint users
+
+Everything above selects `λ` and `μ` by looking at a sweep over the same dataset the
+result is then reported on. Re-validating on fresh user samples narrows the problem but
+does not remove it: part of any reported margin is a measure of how many grid cells were
+tried. `experiments/protocol.py` removes it.
+
+**The protocol.** Split the sampled users into two disjoint halves. Declare a fairness
+budget `τ` — an upper bound on mean exposure-parity deviation, the way a deployer would
+actually state the requirement. Tune **every** method on the tuning half by maximising
+NDCG@10 subject to `parity ≤ τ`. Evaluate the chosen configuration once, on the other
+half. Repeat over seeds, and sweep `τ`.
+
+Two details do most of the work:
+
+- **The baselines are tuned too.** `mmr` and `quota_mmr` have a `λ` of their own, left
+  at 0.5 everywhere else in this repo. Searching the QUBO's two weights while leaving
+  the baseline's one at its default is the same asymmetry that made the original
+  conclusion wrong, pointed the other way. Here `quota_mmr` genuinely uses its search —
+  it picks `mmr_lam=0.7` under tight budgets and `0.3` under loose ones.
+- **Selection is constrained.** Maximising NDCG alone always returns `λ=0, μ=0`, which
+  *is* greedy top-k: NDCG 1.0 by construction and the worst parity available. A method
+  that cannot meet the budget is flagged infeasible rather than quietly reported at its
+  least-bad setting next to methods that met it.
+
+NDCG@10 on held-out users, 3 seeds, 40 tuning / 40 evaluation users
+(`results/amazon_lb_protocol.csv`). `--` means no configuration met the budget on every
+seed:
+
+| fairness budget τ | 0.20 | 0.22 | 0.25 | 0.30 | 0.40 | 1.00 |
+|---|---|---|---|---|---|---|
+| greedy_topk | -- | -- | -- | -- | -- | **1.0000** |
+| mmr | -- | -- | -- | -- | -- | 0.9887 |
+| quota_mmr | -- | -- | -- | 0.9033 | 0.9033 | 0.9033 |
+| **qubo_tabu** | -- | **0.9043** | **0.9043** | **0.9043** | **0.9043** | 0.9639 |
+| qubo_feasible | -- | 0.8501 | 0.8501 | 0.8501 | 0.8501 | 0.9453 |
+
+![fairness budget curve](results/amazon_lb_protocol_budget.png)
+
+**Three regimes, and they are the actual result.**
+
+*Tight (`τ = 0.22, 0.25`).* Only the QUBO methods meet the budget at all. `quota_mmr`
+achieves 0.2517 ± 0.0067 parity at best — it cannot get under 0.25 reliably at any
+`mmr_lam`, because a quota mechanism can only redistribute slots it has. The QUBO's
+penalty targets the parity objective directly and reaches 0.1983 ± 0.0017, essentially
+the arithmetic floor. **This is the regime where QUBO reranking does something no
+baseline here can do**, and it is a feasibility claim, not an accuracy one.
+
+*Moderate (`τ = 0.30, 0.40`).* `quota_mmr` becomes feasible and the accuracy gap closes
+to nothing: 0.9033 ± 0.0115 against `qubo_tabu`'s 0.9043 ± 0.0109. The QUBO still
+delivers strictly better parity (0.1983 vs 0.2625, non-overlapping), so it buys fairness
+headroom rather than accuracy — at ~100× the compute.
+
+*Unconstrained (`τ = 1.00`).* Greedy top-k wins by definition. Both QUBO solvers select
+`λ=0, μ=0` and return NDCG **1.0000**, recovering greedy exactly. That is the protocol's
+built-in correctness check: told that fairness does not matter, the tuner correctly
+concludes the QUBO should not be used.
+
+The selection is stable — `λ=0, μ=1` is chosen at every constrained budget on every
+seed — which matters, because an unstable selection would mean the tuning half was too
+small to choose from reliably.
+
+**What is still weak.** Three seeds and 40 evaluation users is a small sample, and the
+`τ=0.20` column shows it: the QUBO's parity of 0.1983 ± 0.0017 straddles the budget, so
+it is marked infeasible on the seeds where tuning landed just above. A paired per-user
+test would extract far more from the same runs than comparing means over three seeds,
+and is the next item in Phase 2.
+
 ### Trade-off curves
 
 ![synthetic Pareto](results/synthetic_sweep_pareto.png)
@@ -346,6 +434,11 @@ python experiments/run_experiment.py --config configs/amazon_lb.yaml --repeats 5
 
 # the sweep also writes amazon_lb_sweep_baselines.csv, on its own user sample
 python experiments/sweep.py --config configs/amazon_lb.yaml --n-users 40
+
+# the honest comparison: tune every method on one half of the users, evaluate on the
+# other, sweep the fairness budget. This is the one to run if you only run one.
+python experiments/protocol.py --config configs/amazon_lb.yaml \
+  --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80
 
 # picks up those matched baselines automatically -- do not pass results/amazon_lb.csv
 # instead; Gini and catalogue coverage are catalogue-level aggregates and do not
@@ -475,7 +568,7 @@ qubo_rerank/
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
 experiments/        run_experiment · sweep · plot_pareto · tables
 configs/            YAML experiment configs
-tests/              142 tests · 77% line coverage
+tests/              165 tests · 75% line coverage
 ```
 
 **If you are reading this to judge the work, three files carry it:**
@@ -505,16 +598,20 @@ sit at 0.6915 ± 0.0384 and 0.6881 ± 0.0400, a gap roughly a tenth of the noise
 predicted that "some of the gaps will not survive repeated runs" — that was the one.
 The `qubo_sa` result survived comfortably, as predicted.
 
+**Also done:** the disjoint tuning split (`experiments/protocol.py`) — see
+[Tuning and evaluation on disjoint users](#tuning-and-evaluation-on-disjoint-users).
+Every method, baselines included, is now tuned on one half of the users under a declared
+fairness budget and scored on the other half.
+
 **Next in Phase 2, in priority order:**
 
-1. **A disjoint tuning split.** `λ` and `μ` are currently selected by inspecting a sweep
-   over the same dataset they are then evaluated on. This is the weakest link in the
-   headline result and it is a protocol change, not a compute problem.
+1. **Per-user paired tests.** All methods see identical candidate sets, so a paired
+   comparison over users is available and is far more powerful than comparing means over
+   a handful of seeds.
 2. **A second and third dataset.** One dataset with one similarity structure cannot tell
    you whether the operating-point effect generalises.
-3. **Per-user paired tests.** All five solvers see identical candidate sets, so a paired
-   comparison over users is available and is far more powerful than comparing means with
-   n=5.
+3. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
+   across machines. See the note on its wall-clock timeout below.
 
 ## Related work
 
