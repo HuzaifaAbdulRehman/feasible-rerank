@@ -96,6 +96,34 @@ Four independent observations confirm this is the mechanism rather than a tuning
 Across 5 seeds, `qubo_sa` scores 0.475 ± 0.030 NDCG against 0.692 ± 0.038 for the
 corrected solvers — a gap exceeding five standard deviations.
 
+### 2.1a Measured against the true optimum
+
+At small n the optimum is enumerable -- C(26,5) = 65,780 subsets -- so solvers can be
+scored as a fraction of the available improvement recovered, anchored between a random
+feasible set (0%) and the exact optimum (100%). At n=22, k=5 over 12 instances:
+
+  qubo_tabu       100.0%   exactly optimal on 100% of instances
+  qubo_feasible   100.0%   exactly optimal on 100% of instances
+  qubo_sa          80.1%
+  mmr              75.3%
+  quota_mmr        67.1%
+  qubo_sb          18.9%   feasible on only 50% of instances
+  greedy_topk      14.4%
+
+Both constraint-preserving solvers are *exactly* optimal, which is what licenses trusting
+them at n=200 where enumeration is impossible.
+
+The barrier also grows with n, as the mechanism predicts -- the penalty scales with the
+number of variables while the objective does not:
+
+  n                  14      18      22      26      30     200
+  qubo_sa         87.6%   81.1%   77.7%   76.9%   73.4%   worse than no search
+  qubo_tabu        100%    100%    100%    100%    100%    --
+  qubo_feasible    100%    100%    100%    100%    100%    --
+
+This explains why the failure is rarely reported: at textbook scale the penalty encoding
+works well enough to look fine. It breaks at the sizes a real reranker faces.
+
 ### 2.1b Is it a budget problem? No.
 
 Each solver was run across three orders of magnitude of compute and scored on QUBO

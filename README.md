@@ -123,6 +123,52 @@ whether the sampler optimised anything at all. A near-random feasible list score
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
 
+### Measured against the true optimum
+
+Every comparison above is *relative* — one solver's energy against another's. That
+supports "`neal` is worse than tabu" but not "`neal` recovers 77% of what was available",
+and the second is a far stronger thing to be able to say.
+
+At small `n` the optimum is not a matter of opinion: choosing k items from n admits
+`C(n, k)` subsets — 65,780 at n=26, k=5 — so enumerating them gives the exact minimum.
+`experiments/optimality.py` does that and scores every solver as a **fraction of the
+available improvement recovered**, anchored between a random feasible set (0%) and the
+true optimum (100%).
+
+n=22, k=5, λ=4, 12 instances:
+
+| method | % recovered | exactly optimal | feasible |
+|---|---|---|---|
+| **qubo_tabu** | **100.0%** | **100%** | 100% |
+| **qubo_feasible** | **100.0%** | **100%** | 100% |
+| qubo_sa | 80.1% | 0% | 100% |
+| mmr | 75.3% | 0% | 100% |
+| quota_mmr | 67.1% | 0% | 100% |
+| qubo_sb | 18.9% | 0% | **50%** |
+| greedy_topk | 14.4% | 0% | 100% |
+| *random_feasible* | *0.0%* | — | 100% |
+
+**Both constraint-preserving solvers are exactly optimal on every instance** — not merely
+better than a broken one. That is what licenses trusting them at n=200, where enumeration
+is impossible, and `tests/test_optimality.py` pins it so a regression cannot pass quietly.
+
+**And the barrier grows with n, exactly as the mechanism predicts.** The penalty scales
+with the number of variables while the objective does not, so `neal` should degrade as
+the problem grows. It does, monotonically:
+
+| n | 14 | 18 | 22 | 26 | 30 | 200 |
+|---|---|---|---|---|---|---|
+| `qubo_sa` recovered | 87.6% | 81.1% | 77.7% | 76.9% | 73.4% | *worse than no search* |
+| `qubo_tabu` | **100%** | **100%** | **100%** | **100%** | **100%** | — |
+| `qubo_feasible` | **100%** | **100%** | **100%** | **100%** | **100%** | — |
+
+At n=14 the encoding is survivable and `neal` recovers most of the objective. By n=200 —
+the size an actual reranker faces — it has fallen below a single deterministic MMR pass.
+The constraint-preserving solvers are flat at 100% across the whole range.
+
+This also explains why the failure is so rarely reported: **at textbook scale the penalty
+encoding works well enough to look fine.** It breaks at the sizes that matter.
+
 ### Is it just a budget problem?
 
 The obvious objection to everything above is the cheap one: **you did not run it long
