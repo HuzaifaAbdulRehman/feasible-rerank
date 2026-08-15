@@ -1,0 +1,46 @@
+# Amazon Gift Cards -- the small, dense stress case.
+#
+# Download once:
+#   curl --create-dirs -o data/amazon_Gift_Cards/Gift_Cards.csv #     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Gift_Cards.csv
+#
+# After 5-core filtering: 2,960 interactions, 456 users, 147 items, density 0.0442 --
+# 6.6x denser than Luxury Beauty over a catalogue an order of magnitude smaller.
+#
+# The candidate set is 100 rather than 200 because the catalogue holds only 147 items;
+# retrieving 200 would return the whole catalogue and turn the "rerank a shortlist" task
+# into something else. This is the regime where a QUBO is least disadvantaged -- a small
+# n is exactly where exhaustive-ish search should pay off -- so it is a fair place to
+# look for the method's best case rather than a hostile one.
+
+seed: 0
+measure_energy: true
+
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Gift_Cards/Gift_Cards.csv
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 100               # catalogue holds 147; a 200-candidate set is the catalogue
+  n_groups: 4
+  k: 10
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

@@ -1,0 +1,52 @@
+# Amazon Software -- the generalisation check.
+#
+# Download once:
+#   curl --create-dirs -o data/amazon_Software/Software.csv \
+#     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Software.csv
+#
+# After 5-core filtering: 12,454 interactions, 1,779 users, 729 items, density 0.0096.
+#
+# Chosen because it differs from Luxury Beauty in the ways that should matter to the
+# fairness result while staying e-commerce: half the catalogue, half the users, and 1.4x
+# the density. If the feasibility finding is a property of the method it should survive
+# that; if it is a property of one catalogue's popularity structure it should not.
+#
+# Rejected candidates, recorded so the choice is not mistaken for cherry-picking:
+#   Appliances     collapses to 13 users / 4 items under a 5-core filter
+#   Digital_Music  11,269 items after filtering, which needs a ~1 GB dense similarity
+#                  matrix -- the scaling limit documented in benchmarks/loader.py
+
+seed: 0
+measure_energy: true
+
+# The protocol and sweep scripts search lam and mu themselves; these are only the
+# defaults for a single headline run.
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Software/Software.csv
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 200               # retrieval top-N == QUBO problem size
+  n_groups: 4                # popularity tiers; tier 0 is the short head
+  k: 10
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

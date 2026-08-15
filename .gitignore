@@ -32,3 +32,4 @@ results/*.log
 .coverage.*
 htmlcov/
 .ruff_cache/
+data/amazon_*/
