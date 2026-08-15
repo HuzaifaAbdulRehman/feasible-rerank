@@ -620,14 +620,28 @@ python experiments/sweep.py --config configs/amazon_lb.yaml --n-users 40
 python experiments/protocol.py --config configs/amazon_lb.yaml \
   --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80
 
-# picks up those matched baselines automatically -- do not pass results/amazon_lb.csv
-# instead; Gini and catalogue coverage are catalogue-level aggregates and do not
-# transfer between user-sample sizes
-python experiments/plot_pareto.py --sweep results/amazon_lb_sweep.csv
+# paired per-user significance tests -- Wilcoxon, Holm-corrected across the family
+python experiments/paired.py --config configs/amazon_lb.yaml --lam 0.0 --mu 1.0   --n-users 200 --reference quota_mmr
+
+# does the result survive a change of catalogue? Run the protocol on the others first;
+# each config carries its own download command.
+python experiments/protocol.py --config configs/amazon_software.yaml  --repeats 3 --n-users 80
+python experiments/protocol.py --config configs/amazon_giftcards.yaml --repeats 3 --n-users 80
+python experiments/compare_datasets.py
+
+# figures. plot_pareto picks up the matched baselines automatically -- do not pass
+# results/amazon_lb.csv instead; Gini and catalogue coverage are catalogue-level
+# aggregates and do not transfer between user-sample sizes
+python experiments/plot_pareto.py   --sweep results/amazon_lb_sweep.csv
+python experiments/plot_protocol.py --protocol results/amazon_lb_protocol.csv
 ```
 
-Runs must be sequential. `seconds` and `kWh` are wall-clock measurements, so a second
-job on the same machine is reported as the first job's energy cost.
+**Three conditions, all learned the hard way.** Runs must be **sequential** — `seconds`
+and `kWh` are wall-clock, so a second job is charged to whichever solver is running. The
+machine must be on **mains power** — on battery this laptop's CPU drops from ~3.6 GHz to
+1.297 GHz and every timing rises ~2.8× while every quality metric stays byte-identical.
+And the whole results directory should be produced by **one version of the code**, since
+even a tie-break change shifts candidate sets slightly.
 
 ## Data and protocol
 
