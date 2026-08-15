@@ -56,6 +56,12 @@ cosine similarity, top-100 neighbourhood) retrieves the top-n candidates and sup
 `r_i` and `s_ij` from one fit; the QUBO selects k=10 from n=200. Leave-one-out evaluation
 on each user's most recent interaction, 5-core filtering.
 
+Because every result is downstream of this model, it is validated against RecBole's
+reference `ComputeSimilarity`, transcribed into the test suite as an oracle. Similarity
+values agree to 6e-08 (float32 vs float64); truncated neighbour sets agree for 626 of 727
+items, and all 101 disagreements sit at exactly-tied similarity values — the two
+implementations choose different members of a tied group and are otherwise identical.
+
 **Groups.** The ratings export carries no product metadata, so groups are *popularity
 tiers*: items rank-ordered by training interaction count and cut into four equal-sized
 tiers, the standard short-head/long-tail partition. This makes the fairness term fight

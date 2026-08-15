@@ -672,6 +672,15 @@ even a tie-break change shifts candidate sets slightly.
 - **Model:** ItemKNN — shrunk cosine similarity over the interaction matrix, top-100
   neighbourhood for scoring. Supplies both the relevance scores `r_i` and the item-item
   similarity `s_ij` from a single fit.
+
+  **Verified against RecBole's reference implementation** (`tests/test_itemknn_reference.py`).
+  Since every number here is downstream of this model, its `ComputeSimilarity` is
+  transcribed into the test suite as an oracle and compared directly. Similarity values
+  agree to **6e-08** — float32 against our float64, i.e. exactly. Truncated neighbour sets
+  agree for 626 of 727 items, and for all 101 that differ, *every* disagreeing entry sits
+  at a single exactly-tied similarity value. The two implementations pick different
+  members of a tied group and are otherwise identical; ours breaks ties deterministically
+  by `(-value, column)` where RecBole follows memory order.
 - **Split:** leave-one-out on each user's most recent interaction.
 - **Candidates:** top-200 by ItemKNN, reranked down to k=10. QUBO is O(n²), so a full
   catalogue is infeasible; two-stage retrieval → rerank is also how production systems
