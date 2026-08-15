@@ -327,3 +327,37 @@ class TestPenaltyBarrier:
         assert qubo_energy(barrier_instance, quota.selection) < qubo_energy(
             barrier_instance, sa.selection
         )
+
+
+class TestTabuStoppingRule:
+    """Tabu stops on wall-clock by default, which makes it the one solver whose quality
+    depends on the machine. Both modes are pinned so the choice stays deliberate."""
+
+    def test_default_is_the_wall_clock_rule_the_results_used(self, instance):
+        result = TabuSearch(seed=0).solve(instance)
+
+        assert result.stats["work_based_stopping"] is False
+
+    def test_timeout_none_selects_work_based_stopping(self, instance):
+        result = TabuSearch(seed=0, num_restarts=20, timeout=None).solve(instance)
+
+        assert result.stats["work_based_stopping"] is True
+        assert result.stats["num_restarts"] == 20
+
+    def test_both_modes_respect_cardinality(self, instance):
+        for solver in (
+            TabuSearch(seed=0),
+            TabuSearch(seed=0, num_restarts=20, timeout=None),
+        ):
+            assert len(solver.solve(instance).selection) == instance.k
+
+    def test_more_restarts_never_returns_a_worse_energy(self, instance):
+        """Work-based stopping should be monotone in the work done.
+
+        Not asserting strict improvement: the plateau is reached early on this problem,
+        which is the measured reason the fast default was kept.
+        """
+        few = TabuSearch(seed=0, num_restarts=5, timeout=None).solve(instance)
+        many = TabuSearch(seed=0, num_restarts=100, timeout=None).solve(instance)
+
+        assert many.stats["energy"] <= few.stats["energy"] + 1e-9

@@ -9,6 +9,11 @@ amazon_lb,mmr,1.0,0.9886683344828984
 amazon_lb,quota_mmr,0.3,0.9033830698172484
 amazon_lb,qubo_tabu,0.22,0.9044373213705157
 amazon_lb,qubo_feasible,0.22,0.84748542287794
+amazon_music,greedy_topk,,
+amazon_music,mmr,,
+amazon_music,quota_mmr,0.3,0.8397659575347998
+amazon_music,qubo_tabu,0.22,0.8457362656681745
+amazon_music,qubo_feasible,0.22,0.7573065014259625
 amazon_software,greedy_topk,1.0,1.0
 amazon_software,mmr,1.0,0.9917230935449681
 amazon_software,quota_mmr,0.3,0.903283017431554

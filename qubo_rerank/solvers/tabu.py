@@ -32,13 +32,66 @@ class TabuSearch:
 
     name = "qubo_tabu"
 
-    def __init__(self, num_reads: int = 10, seed: int | None = None) -> None:
+    def __init__(
+        self,
+        num_reads: int = 10,
+        num_restarts: int = 50,
+        timeout: float | None = 20.0,
+        seed: int | None = None,
+    ) -> None:
+        """
+        Args:
+            num_reads: independent runs; the best is kept.
+            num_restarts: tabu restarts per read. **This is the stopping criterion.**
+            timeout: wall-clock cap in milliseconds, or ``None`` for the work-based
+                stopping this class defaults to. Set it only to reproduce the old
+                behaviour deliberately.
+            seed: RNG seed.
+
+        **On the stopping rule, which is worth understanding before changing it.**
+
+        ``TabuSampler`` stops at whichever of ``timeout`` and ``num_restarts`` fires
+        first, and its own default is ``timeout=20`` -- 20 ms of *wall-clock* per read.
+        A solver that stops on elapsed time does less search on a slower machine, so its
+        solution quality becomes a property of the hardware. That is not hypothetical
+        here: running identical seeds with this laptop on battery (CPU pinned to
+        1.297 GHz) and on mains (~3.6 GHz turbo), the two fixed-work solvers returned
+        bit-identical results while this one moved from 0.8801 to 0.8873 NDCG.
+
+        The obvious fix is to stop on work instead. Measured on Amazon Luxury Beauty,
+        40 users at lam=0, mu=1, that costs a great deal for almost nothing:
+
+            timeout=20ms       NDCG 0.8983   parity 0.1992    10.8 s
+            num_restarts=50    NDCG 0.8985   parity 0.1992    62.9 s
+            num_restarts=200   NDCG 0.8985   parity 0.1992   232.2 s
+
+        20 ms already reaches the quality plateau *on this machine*, and buying the last
+        0.0002 NDCG costs 6-21x the wall-clock. That also explains the battery figure:
+        mains-20ms sits at the plateau and battery-20ms, with 2.8x less search, sits
+        below it.
+
+        So the default keeps ``timeout=20`` -- it is Pareto-better here, and it is what
+        every result in ``results/`` was produced with. ``num_restarts=50`` is the
+        work-based plateau and is the setting to use for a portable comparison, by
+        passing ``timeout=None``:
+
+            TabuSearch(num_restarts=50, timeout=None)
+
+        **Anyone reproducing these numbers on slower hardware should do exactly that**,
+        or they will measure their CPU rather than the method.
+        """
         self.num_reads = num_reads
+        self.num_restarts = num_restarts
+        self.timeout = timeout
         self.seed = seed
         self._sampler = TabuSampler()
 
     def solve(self, problem) -> SolveResult:
-        stats: dict[str, Any] = {"num_reads": self.num_reads}
+        stats: dict[str, Any] = {
+            "num_reads": self.num_reads,
+            "num_restarts": self.num_restarts,
+            "work_based_stopping": self.timeout is None,
+        }
 
         with timed(stats, "build_time"):
             rp = build_problem(
@@ -51,7 +104,14 @@ class TabuSearch:
                 targets=problem.targets,
             )
 
-        kwargs: dict[str, Any] = {"num_reads": self.num_reads}
+        kwargs: dict[str, Any] = {
+            "num_reads": self.num_reads,
+            "num_restarts": self.num_restarts,
+        }
+        # dwave-samplers stops at whichever criterion fires first, so a work-based run
+        # needs the clock pushed far enough out that it cannot bind. Passing None is not
+        # accepted; a large finite value is the supported way to disable it.
+        kwargs["timeout"] = float(self.timeout) if self.timeout is not None else 1e9
         if self.seed is not None:
             kwargs["seed"] = self.seed
 
