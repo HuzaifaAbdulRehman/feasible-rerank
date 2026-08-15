@@ -743,7 +743,7 @@ swapping the real thing back in is a loader change and nothing else.
 ```
 qubo_rerank/
 ├── formulations/   objective · cardinality · fairness · builder
-├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap annealing · bifurcation
+├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap · bifurcation · QPU
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
 experiments/        run_experiment · sweep · protocol · paired · compare_datasets · plots
@@ -803,9 +803,13 @@ Holm correction, which is where "the two methods tie on NDCG" became the more pr
 
 **Remaining, in priority order:**
 
-1. **D-Wave Leap QPU.** The free tier gives a minute of QPU time a month, enough to
-   report embedding overhead and chain breaks on a real annealer. This is the one item
-   that needs an account rather than compute.
+1. **Run the D-Wave Leap QPU experiment.** `qubo_rerank/solvers/quantum.py` is written
+   and wired in; it has **never been run**, because it needs a Leap account and the free
+   tier's monthly minute of QPU time. It reports embedding overhead, chain-break fraction
+   and total time-to-solution separately from QPU access time — the last being the number
+   that flatters quantum hardware by excluding the classical work needed to use it. Note
+   that a dense 200-variable clique may not embed on current topologies at all, which
+   would itself be the result.
 2. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
    across machines. See the note on its wall-clock timeout below.
 3. **Paired tests inside the disjoint-split protocol.** The paired tests run at a fixed
