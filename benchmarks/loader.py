@@ -166,6 +166,93 @@ def cosine_similarity(matrix: sparse.csr_matrix, shrink: float = 100.0) -> np.nd
     return similarity
 
 
+def cosine_similarity_sparse(
+    matrix: sparse.csr_matrix, shrink: float = 100.0
+) -> sparse.csr_matrix:
+    """Shrunk item-item cosine similarity, without ever going dense.
+
+    :func:`cosine_similarity` allocates ``n_items ** 2`` floats. That is 15 MB on Amazon
+    Luxury Beauty and fine; it is **1,016 MB** on Amazon Digital Music, whose catalogue
+    survives 5-core filtering at 11,269 items. That measurement is what this function
+    exists for -- the docstring above has always said "sparsify past ~10k items", and
+    this is that.
+
+    The trick is that the dense object is never *needed*. Co-occurrence ``XᵀX`` is
+    naturally sparse (two items co-occur only if some user held both), and the
+    normaliser is required only at positions where co-occurrence is non-zero -- a
+    similarity of ``0 / anything`` is still zero. So the norms are applied to
+    ``.data`` in place rather than through an ``n x n`` outer product, which is the
+    single allocation that made the dense version impossible.
+
+    Returns the same values as :func:`cosine_similarity` to floating-point precision,
+    which ``tests/test_loader.py`` asserts directly.
+    """
+    co_occurrence = (matrix.T @ matrix).tocsr().astype(float)
+    norms = np.sqrt(co_occurrence.diagonal())
+
+    # Row index of every stored entry, obtained from the CSR pointer array rather than
+    # by building a coordinate matrix -- nnz-sized, not n²-sized.
+    rows = np.repeat(np.arange(co_occurrence.shape[0]), np.diff(co_occurrence.indptr))
+    cols = co_occurrence.indices
+
+    co_occurrence.data /= norms[rows] * norms[cols] + shrink + 1e-6
+    co_occurrence.setdiag(0.0)
+    co_occurrence.eliminate_zeros()
+    return co_occurrence
+
+
+def top_k_neighbours_sparse(
+    similarity: sparse.csr_matrix, topk: int = 100
+) -> sparse.csr_matrix:
+    """Keep each item's ``topk`` nearest neighbours; sparse counterpart.
+
+    Works row by row over the CSR structure, so cost is proportional to the number of
+    stored entries rather than to ``n_items ** 2``. Rows already holding no more than
+    ``topk`` entries are passed through untouched.
+    """
+    indptr, indices, data = similarity.indptr, similarity.indices, similarity.data
+    keep_rows, keep_cols, keep_data = [], [], []
+
+    for row in range(similarity.shape[0]):
+        start, end = indptr[row], indptr[row + 1]
+        row_data = data[start:end]
+        row_cols = indices[start:end]
+
+        if row_data.size > topk:
+            # Same (-value, column) ordering as the dense path, so the two agree
+            # exactly rather than merely both being valid.
+            best = np.lexsort((row_cols, -row_data))[:topk]
+            row_data, row_cols = row_data[best], row_cols[best]
+
+        keep_rows.append(np.full(row_cols.size, row, dtype=np.int32))
+        keep_cols.append(row_cols)
+        keep_data.append(row_data)
+
+    return sparse.csr_matrix(
+        (
+            np.concatenate(keep_data) if keep_data else np.array([]),
+            (
+                np.concatenate(keep_rows) if keep_rows else np.array([], dtype=np.int32),
+                np.concatenate(keep_cols) if keep_cols else np.array([], dtype=np.int32),
+            ),
+        ),
+        shape=similarity.shape,
+    )
+
+
+def candidate_similarity(similarity, candidates: np.ndarray) -> np.ndarray:
+    """The dense ``len(candidates) x len(candidates)`` block the QUBO needs.
+
+    The catalogue-wide matrix may be sparse, but the *instance* is always dense: the
+    reranker sees a few hundred candidates and the formulation reads every pair. Fancy
+    indexing differs between the two representations, so it is done here once rather
+    than at the call site.
+    """
+    if sparse.issparse(similarity):
+        return np.asarray(similarity[candidates][:, candidates].todense(), dtype=float)
+    return similarity[np.ix_(candidates, candidates)]
+
+
 def top_k_neighbours(similarity: np.ndarray, topk: int = 100) -> np.ndarray:
     """Keep only each item's ``topk`` nearest neighbours, zeroing the rest.
 
@@ -177,10 +264,17 @@ def top_k_neighbours(similarity: np.ndarray, topk: int = 100) -> np.ndarray:
     if topk >= similarity.shape[1]:
         return similarity.copy()
 
+    # Ties at the k-th position are common -- on Amazon Software, 98 of 727 rows have
+    # several neighbours sharing the boundary value exactly, one row with ten of them.
+    # argpartition picks among them by memory order, which is a valid top-k but a
+    # different one depending on how the matrix was built. Sorting by (-value, column)
+    # makes the choice deterministic and identical to the sparse path, so which
+    # representation was used cannot change a result.
+    columns = np.arange(similarity.shape[1])
     truncated = np.zeros_like(similarity)
-    keep = np.argpartition(-similarity, topk, axis=1)[:, :topk]
-    rows = np.arange(similarity.shape[0])[:, None]
-    truncated[rows, keep] = similarity[rows, keep]
+    for row in range(similarity.shape[0]):
+        keep = np.lexsort((columns, -similarity[row]))[:topk]
+        truncated[row, keep] = similarity[row, keep]
     return truncated
 
 
@@ -249,6 +343,8 @@ def load_benchmark(
     mu: float = 0.0,
     binary: bool = True,
     seed: int | None = 0,
+    sparse_similarity: bool | None = None,
+    dense_similarity_limit: int = 256_000_000,
 ) -> Benchmark:
     """Load a ratings file and turn it into reranking instances.
 
@@ -265,6 +361,11 @@ def load_benchmark(
         mu: fairness weight carried into each instance.
         binary: implicit feedback rather than raw ratings.
         seed: RNG seed for the user sample.
+        sparse_similarity: force the sparse or dense similarity path. ``None`` chooses
+            from the catalogue size that k-core filtering actually produced.
+        dense_similarity_limit: byte budget above which the sparse path is used.
+            Defaults to 256 MB, which admits every catalogue here except Digital Music's
+            11,269 items (~1 GB).
 
     Returns:
         A :class:`Benchmark`.
@@ -282,8 +383,23 @@ def load_benchmark(
             f"after {min_interactions}-core filtering"
         )
 
-    similarity = cosine_similarity(matrix, shrink=shrink)
-    scoring_similarity = top_k_neighbours(similarity, topk=topk_neighbours)
+    # A dense similarity matrix costs n_catalogue^2 * 8 bytes. That is 15 MB at 1,366
+    # items and 1,016 MB at 11,269, so the choice is made from the catalogue actually
+    # produced by the k-core filter rather than assumed. `sparse_similarity=True/False`
+    # forces either path, which is what the equivalence test uses.
+    dense_bytes = n_catalogue * n_catalogue * 8
+    use_sparse = (
+        dense_bytes > dense_similarity_limit
+        if sparse_similarity is None
+        else sparse_similarity
+    )
+
+    if use_sparse:
+        similarity = cosine_similarity_sparse(matrix, shrink=shrink)
+        scoring_similarity = top_k_neighbours_sparse(similarity, topk=topk_neighbours)
+    else:
+        similarity = cosine_similarity(matrix, shrink=shrink)
+        scoring_similarity = top_k_neighbours(similarity, topk=topk_neighbours)
 
     popularity = np.asarray(matrix.sum(axis=0)).ravel()
     catalogue_groups = popularity_tiers(popularity, n_tiers=n_groups)
@@ -308,7 +424,13 @@ def load_benchmark(
     for uid in eligible:
         row = user_index[uid]
         profile = matrix[row]
-        scores = np.asarray(profile @ scoring_similarity).ravel()
+        # A sparse scoring matrix makes this product sparse too, and np.asarray on a
+        # sparse matrix yields a 0-d object array rather than the scores -- so the
+        # result is densified explicitly rather than coerced.
+        scored = profile @ scoring_similarity
+        scores = (
+            scored.toarray() if sparse.issparse(scored) else np.asarray(scored)
+        ).ravel()
 
         # Never recommend something already in the training profile.
         scores[profile.indices] = -np.inf
@@ -334,7 +456,7 @@ def load_benchmark(
         instances.append(
             RerankInstance(
                 relevance=normalised,
-                similarity=similarity[np.ix_(candidates, candidates)],
+                similarity=candidate_similarity(similarity, candidates),
                 k=k,
                 groups=catalogue_groups[candidates],
                 lam=lam,

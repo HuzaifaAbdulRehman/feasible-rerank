@@ -28,13 +28,16 @@ sys.path.insert(0, str(ROOT))
 from benchmarks.loader import (
     RATINGS_COLUMNS,
     cosine_similarity,
+    cosine_similarity_sparse,
     interaction_matrix,
     k_core,
     leave_one_out,
     load_benchmark,
+    load_ratings,
     popularity_tiers,
     suggest_lam,
     top_k_neighbours,
+    top_k_neighbours_sparse,
 )
 
 
@@ -381,3 +384,98 @@ class TestSuggestLam:
 
     def test_empty_input_falls_back_rather_than_dividing_by_zero(self):
         assert suggest_lam([]) == 1.0
+
+
+# --------------------------------------------------------- sparse similarity path
+
+
+class TestSparseSimilarity:
+    """The sparse path must be a drop-in replacement, not an approximation.
+
+    It exists because Amazon Digital Music's 11,269-item catalogue needs a ~1 GB dense
+    similarity matrix. That only helps if the two paths agree: a "scalable" variant that
+    quietly returns different numbers converts a memory problem into a correctness one.
+    """
+
+    def test_matches_the_dense_matrix_exactly(self, ratings_csv):
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        dense = cosine_similarity(matrix, shrink=100.0)
+        sparse_sim = cosine_similarity_sparse(matrix, shrink=100.0)
+
+        assert np.allclose(dense, np.asarray(sparse_sim.todense()), atol=0.0, rtol=0.0)
+
+    def test_matches_dense_without_shrink_too(self, ratings_csv):
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        dense = cosine_similarity(matrix, shrink=0.0)
+        sparse_sim = cosine_similarity_sparse(matrix, shrink=0.0)
+
+        assert np.abs(dense - np.asarray(sparse_sim.todense())).max() == 0.0
+
+    def test_stores_far_less_than_the_dense_matrix(self, ratings_csv):
+        """The whole point: the saving has to be real, not notional."""
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        sparse_sim = cosine_similarity_sparse(matrix, shrink=100.0)
+        n = sparse_sim.shape[0]
+
+        assert sparse_sim.nnz < n * n
+
+    def test_diagonal_is_zeroed(self, ratings_csv):
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        sparse_sim = cosine_similarity_sparse(matrix, shrink=100.0)
+
+        assert np.allclose(sparse_sim.diagonal(), 0.0)
+
+    def test_top_k_agrees_with_the_dense_path(self, ratings_csv):
+        """Ties at the k-th neighbour are common, so both paths break them the same way.
+
+        Without a shared rule each returns a valid but different top-k, and which
+        representation was used would silently change downstream candidate sets.
+        """
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        dense = top_k_neighbours(cosine_similarity(matrix, 100.0), topk=20)
+        sparse_top = top_k_neighbours_sparse(cosine_similarity_sparse(matrix, 100.0), topk=20)
+
+        assert np.array_equal(dense, np.asarray(sparse_top.todense()))
+
+    def test_top_k_keeps_at_most_k_per_row(self, ratings_csv):
+        train, _ = leave_one_out(k_core(load_ratings(ratings_csv), 5))
+        matrix, _, _ = interaction_matrix(train)
+
+        truncated = top_k_neighbours_sparse(cosine_similarity_sparse(matrix, 100.0), topk=5)
+
+        assert np.diff(truncated.indptr).max() <= 5
+
+    def test_benchmarks_from_either_path_are_identical(self, ratings_csv):
+        """End to end: same instances, same relevance, same candidate sets."""
+        dense_bench = load_benchmark(ratings_csv, n_users=8, n_candidates=12, k=4,
+                                     sparse_similarity=False)
+        sparse_bench = load_benchmark(ratings_csv, n_users=8, n_candidates=12, k=4,
+                                      sparse_similarity=True)
+
+        assert len(dense_bench.instances) == len(sparse_bench.instances)
+        for a, b in zip(dense_bench.instances, sparse_bench.instances, strict=True):
+            assert a.item_ids == b.item_ids
+            assert np.allclose(a.relevance, b.relevance)
+            assert np.allclose(a.similarity, b.similarity)
+        assert dense_bench.relevant == sparse_bench.relevant
+
+    def test_limit_selects_the_path_automatically(self, ratings_csv):
+        """A byte budget of zero forces sparse; a huge one forces dense. Both must run
+        and agree, which is what makes the automatic choice safe to leave on."""
+        forced_sparse = load_benchmark(ratings_csv, n_users=5, n_candidates=10, k=3,
+                                       dense_similarity_limit=0)
+        forced_dense = load_benchmark(ratings_csv, n_users=5, n_candidates=10, k=3,
+                                      dense_similarity_limit=10**12)
+
+        for a, b in zip(forced_sparse.instances, forced_dense.instances, strict=True):
+            assert np.allclose(a.similarity, b.similarity)
