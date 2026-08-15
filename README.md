@@ -815,9 +815,13 @@ Holm correction, which is where "the two methods tie on NDCG" became the more pr
 3. **Paired tests inside the disjoint-split protocol.** The paired tests run at a fixed
    operating point; combining the two would test the selected configuration on the
    evaluation half directly.
-4. **Run the QUBO on Digital Music**, now that the sparse path makes an 11,269-item
-   catalogue tractable — the first test of whether any of this survives a catalogue an
-   order of magnitude larger.
+4. **Run the protocol on Amazon Digital Music.** `configs/amazon_music.yaml` is set up
+   and the pipeline loads it (11,268 items, 6.4 s, 270 MB peak — the dense path would
+   have needed 1,016 MB), but the protocol has **not been run** on it yet. It would take
+   the benchmark set to four catalogues spanning two orders of magnitude in size and
+   density, and it is the first real test of whether any of this survives a catalogue an
+   order of magnitude larger. Expect lower accuracy across every method: the
+   candidate-set ceiling on recall is 0.20 there, against 0.49 on Luxury Beauty.
 
 ## Related work
 
