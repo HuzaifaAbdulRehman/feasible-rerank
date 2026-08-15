@@ -275,6 +275,40 @@ slow solvers on identical hardware.
 
 ---
 
+## 5b. Relation to published QUBO recommender work
+
+Ferrari Dacrema, Nembrini, Felicioni and Cremonesi have a line of papers applying quantum
+annealing to recommender systems -- carousel selection (RecSys 2021) and feature
+selection (CQFS). CQFS is open source, and reading it establishes directly that:
+
+1. it encodes cardinality with the same penalty generator used here
+   (`dimod.generators.combinations`, `core/CQFS.py`);
+2. it samples with `neal`, the sampler shown above to fail on that encoding; and
+3. it *also* uses tabu, via `dwave_qbsolv.QBSolv(solver='tabu')`.
+
+Point 3 is corroboration rather than criticism: this project found independently that
+tabu recovers what `neal` cannot on a penalty-encoded problem, and those authors
+evidently found tabu worth using too. Two groups reaching the same workaround from
+different directions suggests the difficulty is real rather than an artefact of one
+implementation.
+
+Points 1 and 2 mean the failure mode documented here is *available* in that setting.
+Whether it occurs there is untested and this report makes no claim that it does: feature
+selection over thousands of features is a different problem shape from choosing 10 items
+from 200, the penalty-to-objective ratio differs, and CQFS sweeps the penalty strength
+rather than fixing it.
+
+What can be said is that the diagnostic is absent. There is no feasibility check and no
+comparison of sampler energy against a greedy baseline anywhere in the CQFS core. Without
+those, a run where the sampler returned an arbitrary feasible set is indistinguishable
+from one where it optimised, because the downstream metrics remain plausible either way.
+That is the practical content of §2 and it applied to this project too, before those
+checks were written.
+
+**What is new here** is therefore not the formulation, which is standard and owes its
+shape to that prior work: it is the failure analysis, the constraint-preserving solver,
+the disjoint-split evaluation protocol, and the fairness-budget framing.
+
 ## 6. Limitations
 
 1. **Groups are popularity tiers, not categories or sellers.** The ratings export carries

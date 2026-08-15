@@ -867,6 +867,65 @@ Holm correction, which is where "the two methods tie on NDCG" became the more pr
    order of magnitude larger. Expect lower accuracy across every method: the
    candidate-set ceiling on recall is 0.20 there, against 0.49 on Luxury Beauty.
 
+## Relation to published QUBO recommender work
+
+This is not the first QUBO applied to recommendation. It is worth being precise about
+what is new here and what is not, and about how the penalty-barrier result bears on
+existing work — carefully, because it bears on it more than is comfortable.
+
+**The prior work.** Ferrari Dacrema, Nembrini, Felicioni and Cremonesi have a line of
+papers applying quantum annealing to recommender systems: carousel selection
+(RecSys 2021) and feature selection (CQFS, arXiv 2110.05089), among others. CQFS is
+open source, and reading it establishes three things directly rather than by inference:
+
+1. **It encodes cardinality exactly the way this project does.** From `core/CQFS.py`:
+
+   ```python
+   BQM_k = dimod.generators.combinations(self.n_features, k,
+                                         strength=combination_strength, vartype=vartype)
+   ```
+
+   That is the penalty encoding — the same `dimod` generator, used the same way.
+
+2. **It samples with `neal`** (`CQFSSimulatedAnnealingSampler`) as well as a QPU.
+3. **It also uses tabu**, via `dwave_qbsolv.QBSolv` restricted to `solver='tabu'`.
+
+**What that means, stated carefully.** Point 3 is the interesting one. This project found
+independently that tabu recovers what `neal` cannot on the penalty-encoded problem; the
+CQFS authors evidently found tabu worth using too. Two groups arriving at the same
+workaround from different directions is mild corroboration that the difficulty is real
+and not an artefact of this implementation.
+
+Point 1 and 2 together mean the failure mode documented here is **available** in that
+setting. Whether it *occurs* there is a different question and this project has not
+tested it: feature selection over thousands of features is a different problem shape from
+selecting 10 items out of 200, the penalty-to-objective ratio will differ, and CQFS
+sweeps `combination_strengths` over a range rather than fixing one. Nothing here shows
+their published results are wrong, and this project makes no such claim.
+
+What it does show is that **the diagnostic is missing**. There is no feasibility or
+solution-quality check anywhere in the CQFS core: no assertion that the returned
+selection has exactly `k` entries, and no comparison of the sampler's energy against a
+greedy baseline on the same BQM. Without those, a run in which the sampler returned an
+arbitrary feasible set would look indistinguishable from a run in which it optimised —
+because the downstream metrics stay plausible either way. That is the substance of the
+warning in [Finding 1](#1-the-penalty-encoding-breaks-the-sampler), and it applies to any
+paper in this family, this one included before those checks were added.
+
+**Where this project differs:**
+
+| | prior work | here |
+|---|---|---|
+| task | feature selection, carousel selection | list reranking with group-exposure fairness |
+| cardinality | penalty encoding | penalty encoding **plus** a constraint-preserving solver that avoids it |
+| diagnosis | — | the barrier measured four ways, and shown to defeat continuous dynamics too |
+| tuning protocol | penalty strength swept on the evaluation data | disjoint tuning/evaluation user splits |
+| statistics | — | paired Wilcoxon over users, Holm-corrected |
+
+The honest summary: the *formulation* here is standard and owes its shape to that prior
+work. The contributions are the failure analysis, the constraint-preserving solver, the
+evaluation protocol, and the fairness-budget framing.
+
 ## Related work
 
 This project builds on published research; it does not reimplement it wholesale.
