@@ -96,6 +96,22 @@ Four independent observations confirm this is the mechanism rather than a tuning
 Across 5 seeds, `qubo_sa` scores 0.475 ± 0.030 NDCG against 0.692 ± 0.038 for the
 corrected solvers — a gap exceeding five standard deviations.
 
+### 2.1b Is it a budget problem? No.
+
+Each solver was run across three orders of magnitude of compute and scored on QUBO
+energy. `neal`'s best result at any budget -- 1,000 reads x 10,000 sweeps, 184 s -- is
+**+0.00152**, still worse than MMR's **+0.00065**, a single pass performing no search.
+`qubo_feasible` reaches -0.00037 in **0.2 s**, a ~900x smaller budget, and neither fixed
+solver ever fails to cross zero.
+
+More compute is sometimes actively harmful: on one seed, 100 reads x 10,000 sweeps gives
++0.00127 in 19 s while the same reads at 100,000 sweeps gives +0.00260 in 183 s. A longer
+anneal is a colder one, so it freezes harder into whichever feasible set it first found.
+
+`qubo_tabu` is flat across the ladder (-0.00062 to -0.00070) and `qubo_feasible` improves
+monotonically -- the latter being the only curve here that behaves as a search algorithm
+should.
+
 ### 2.2 Continuous dynamics: the common-mode field
 
 The barrier argument concerns move sets, and so says nothing about a method that has

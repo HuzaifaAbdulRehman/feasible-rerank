@@ -37,7 +37,9 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    length and close to arbitrary among lists of that length. Two fixes are implemented
    here, each ~2× better on the annealer's own objective. Across 5 seeds `qubo_sa`
    scores 0.475 ± 0.030 NDCG against 0.692 ± 0.038 for the fixed solvers — a gap of
-   more than five standard deviations.
+   more than five standard deviations. **It is not a budget problem:** given three
+   orders of magnitude more compute — up to 184 seconds — `neal` still never beats a
+   single deterministic MMR pass that performs no search at all.
 2. **The choice of `λ` and `μ` decides the QUBO-vs-classical comparison, and it decides
    it by more than the methods differ.** At `λ=4, μ=0` — the configuration this repo's
    headline benchmark uses — every QUBO variant loses to group-quota MMR on essentially
@@ -120,6 +122,59 @@ caution against reporting "QUBO reranking achieves good diversity" without check
 whether the sampler optimised anything at all. A near-random feasible list scores *well*
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
+
+### Is it just a budget problem?
+
+The obvious objection to everything above is the cheap one: **you did not run it long
+enough.** Every other result here uses one budget per solver, so on that evidence alone
+the objection is unanswerable. `experiments/sensitivity.py` answers it.
+
+Each solver is run across three orders of magnitude of compute and scored on **QUBO
+energy** — the objective the sampler is minimising, computed from the same BQM it was
+handed. Energy rather than NDCG deliberately: NDCG depends on the evaluation protocol and
+could be argued about, whereas a solver that loses on the energy it was minimising has
+lost on its own terms.
+
+Mean of 3 seeds, barrier instance, n=200, k=10, λ=4:
+
+| solver | budget | QUBO energy ↓ | secs |
+|---|---|---|---|
+| *greedy_topk* | *no search* | *+0.00308* | *0.00* |
+| *mmr* | *no search* | *+0.00065* | *0.03* |
+| qubo_sa | 10 reads × 100 sweeps | +0.00316 | 0.2 |
+| qubo_sa | 100 × 100 | +0.00197 | 0.3 |
+| qubo_sa | 100 × 1,000 | +0.00205 | 2.0 |
+| qubo_sa | 100 × 10,000 | +0.00180 | 19.9 |
+| qubo_sa | 100 × **100,000** | +0.00213 | **182.5** |
+| qubo_sa | 1,000 × 10,000 | **+0.00152** | 184.4 |
+| **qubo_tabu** | 5 restarts | **−0.00062** | **0.4** |
+| qubo_tabu | 1,000 restarts | −0.00070 | 34.6 |
+| **qubo_feasible** | 2 restarts × 30 sweeps | **−0.00037** | **0.2** |
+| qubo_feasible | 32 × 480 | −0.00069 | 7.1 |
+
+![compute budget vs energy](results/sensitivity.png)
+
+**`neal` never crosses zero at any budget.** Its best result anywhere — 1,000 reads ×
+10,000 sweeps, over three minutes — is **+0.00152**, which is still worse than MMR's
+**+0.00065**, a single deterministic pass that performs no search whatsoever. Meanwhile
+`qubo_feasible` is already at −0.00037 after **0.2 seconds**, a ~900× smaller budget.
+
+**More compute is not merely useless for `neal`; it is sometimes actively harmful.** On
+one seed, 100 reads × 10,000 sweeps reaches +0.00127 in 19 s while the *same* reads at
+100,000 sweeps reaches +0.00260 in 183 s — ten times the compute, twice as bad. That is
+the barrier making a prediction and the measurement confirming it: a longer anneal is a
+*colder* one, so it freezes harder into whichever feasible set it first stumbled into.
+
+Two smaller observations, both consistent with the explanation:
+
+- **`qubo_tabu` is essentially flat** — −0.00062 at 5 restarts, −0.00070 at 1,000. It
+  finds its answer immediately and more search buys nothing, which is what a method that
+  is *not* fighting the landscape looks like.
+- **`qubo_feasible` converts compute into quality monotonically** (−0.00037 → −0.00069).
+  It is the only solver here whose curve behaves the way a search algorithm should.
+
+So the budget objection is closed: the barrier is not a resourcing problem, and no amount
+of annealing fixes an encoding whose relevant structure sits below the penalty scale.
 
 ### Continuous dynamics fail too
 
@@ -790,7 +845,7 @@ qubo_rerank/
 ├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap · bifurcation · QPU
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
-experiments/        run_experiment · sweep · protocol · paired · compare_datasets · plots
+experiments/        run_experiment · sweep · protocol · paired · sensitivity · compare_datasets · plots
 configs/            YAML experiment configs (synthetic + 3 Amazon categories)
 tests/              223 tests · ~75% line coverage
 ```
