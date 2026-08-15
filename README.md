@@ -1,13 +1,13 @@
-# qubo-rerank
+# feasible-rerank
 
-[![tests](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml/badge.svg)](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml)
+[![tests](https://github.com/HuzaifaAbdulRehman/feasible-rerank/actions/workflows/tests.yml/badge.svg)](https://github.com/HuzaifaAbdulRehman/feasible-rerank/actions/workflows/tests.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Fair and energy-aware recommendation list selection via QUBO.**
 
 Conventional recommenders pick the top-k items greedily by score. The resulting lists are
-often redundant (near-identical items) and skewed toward popular sellers. `qubo-rerank`
+often redundant (near-identical items) and skewed toward popular sellers. `feasible-rerank`
 instead selects the *entire list at once* as a Quadratic Unconstrained Binary Optimization
 (QUBO) problem, jointly balancing relevance, diversity, and exposure fairness — and reports
 the energy cost of doing so.

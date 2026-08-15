@@ -8,7 +8,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qubo-rerank"
+name = "feasible-rerank"
 version = "0.2.0"
 description = "Fair, energy-aware recommendation list selection via QUBO"
 readme = "README.md"
