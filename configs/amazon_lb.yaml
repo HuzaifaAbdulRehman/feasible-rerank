@@ -1,0 +1,46 @@
+# Amazon Luxury Beauty -- the real-data benchmark.
+#
+# Download once:
+#   curl --create-dirs -o data/amazon_lb/Luxury_Beauty.csv \
+#     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Luxury_Beauty.csv
+#
+# After 5-core filtering: 32,732 interactions, 3,589 users, 1,365 items.
+# Groups are popularity tiers, not categories -- the ratings file has no metadata.
+# See benchmarks/loader.py for why.
+
+seed: 0
+measure_energy: true
+
+# lam=4 comes from loader.suggest_lam: the point where the diversity term is the same
+# order of magnitude as the relevance term. Real similarity matrices are far emptier
+# than the synthetic one (mean ~0.005 vs ~0.15), so the synthetic lam=1.0 would leave
+# the diversity term doing nothing at all. Use sweep.py to trace the actual curve.
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_lb/Luxury_Beauty.csv
+  min_interactions: 5        # k-core threshold
+  topk_neighbours: 100       # ItemKNN neighbourhood for scoring
+  shrink: 100.0              # cosine shrinkage
+  binary: true               # implicit feedback
+
+data:
+  n_users: 200               # users sampled for the benchmark
+  n_items: 200               # retrieval stage top-N == QUBO problem size
+  n_groups: 4                # popularity tiers; tier 0 is the short head
+  k: 10                      # list size
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true          # penalty-encoded cardinality + single-flip sampler
+  qubo_tabu: true        # same BQM, same interface, but with search memory
+  qubo_feasible: true    # anneals over k-subsets; the penalty barrier never arises
+  mmr_lam: 0.5
+  num_reads: 100         # neal reads
+  tabu_reads: 10
+  num_restarts: 8        # FeasibleAnnealing
+  num_sweeps: 120

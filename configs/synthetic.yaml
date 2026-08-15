@@ -1,0 +1,31 @@
+# Synthetic e-commerce benchmark.
+# Relevance is correlated with category, so a greedy reranker starves the tail
+# categories -- the popularity-bias pathology the QUBO fairness term targets.
+
+seed: 0
+measure_energy: true
+
+# Objective weights carried into every instance.
+lam: 1.0   # diversity weight (QUBO objective)
+mu: 0.0    # fairness weight; raise to trade NDCG for exposure parity
+
+data:
+  n_users: 25
+  n_items: 60                  # retrieval stage top-N
+  n_groups: 6                  # categories / sellers
+  k: 10                        # list size
+  dominance: 0.6               # how strongly relevance favours group 0
+  intra_group_similarity: 0.7
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true          # penalty-encoded cardinality + single-flip sampler
+  qubo_tabu: true        # same BQM, same interface, but with search memory
+  qubo_feasible: true    # anneals over k-subsets; the penalty barrier never arises
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

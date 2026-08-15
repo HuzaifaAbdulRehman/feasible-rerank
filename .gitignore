@@ -1,0 +1,28 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Raw datasets are downloaded, not vendored -- see configs/amazon_lb.yaml for the URL.
+dataset/
+data/
+saved/
+log/
+log_tensorboard/
+
+# codecarbon's own scratch file; the numbers worth keeping are folded into results/.
+emissions.csv
+
+# Run logs land next to the results they produced, but only the results are tracked.
+results/*.log
+
+# results/ is deliberately NOT ignored: the CSVs and Pareto plots are the point of the
+# repository, and a reader should be able to see the numbers without a 20-minute rerun.
+# They are kilobytes.
+
+.vscode/
+.idea/
+.DS_Store

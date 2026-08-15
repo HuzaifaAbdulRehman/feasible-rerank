@@ -1,0 +1,28 @@
+# Core: QUBO construction and sampling.
+dimod>=0.12
+dwave-neal>=0.6
+
+# Data, linear algebra, config.
+numpy>=1.24
+scipy>=1.10          # sparse interaction matrix + ItemKNN cosine (benchmarks/loader.py)
+pandas>=2.0
+pyyaml>=6.0
+
+# Instrumentation and plots.
+codecarbon>=2.3
+matplotlib>=3.7
+
+pytest>=7.4
+
+# Deliberately absent: recbole, torch, pyqubo.
+#
+# The plan called for RecBole's ItemKNN to supply relevance scores and the item-item
+# similarity matrix. That model is a shrunk cosine similarity plus a top-k
+# neighbourhood truncation -- no gradients, no GPU. Reimplementing it against
+# scipy.sparse costs ~40 lines (benchmarks/loader.py) and removes a ~2.5 GB dependency
+# from the critical path. The on-disk data format stays RecBole-compatible, so the real
+# thing can be swapped back in as a loader change if a future experiment needs a model
+# that actually trains.
+#
+# pyqubo was never imported: dimod builds the BQMs directly, and dimod.generators
+# .combinations already provides the exact-k cardinality constraint.
