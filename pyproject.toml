@@ -1,0 +1,15 @@
+# Test configuration only -- this project is run from a checkout, not installed, so
+# there is deliberately no [build-system] or [project] table here yet. Packaging is
+# Phase 4.
+#
+# `pythonpath = ["."]` is load-bearing. Without it `from qubo_rerank import ...`
+# resolves only under `python -m pytest`, which prepends the working directory to
+# sys.path; a bare `pytest tests/` -- which is what CI and most contributors run --
+# fails at import. The suite passing locally is not evidence that it passes anywhere
+# else.
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
