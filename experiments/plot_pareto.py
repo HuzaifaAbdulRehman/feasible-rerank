@@ -83,6 +83,17 @@ def main() -> None:
 
     sweep = pd.read_csv(args.sweep)
 
+    # Drop any classical baseline rows carried in the sweep file. They ignore lam and
+    # mu, so a sweep that included them holds one point repeated once per grid cell --
+    # which would be drawn as a dense cluster masquerading as a curve, and would crowd
+    # the Pareto front listing with identical rows. The baselines belong on the plot as
+    # the fixed reference markers below, and only once.
+    baseline_rows = sweep["method"].isin(BASELINE_STYLE)
+    if baseline_rows.any():
+        dropped = sorted(sweep.loc[baseline_rows, "method"].unique())
+        print(f"ignoring baseline rows in the sweep file: {', '.join(dropped)}")
+        sweep = sweep[~baseline_rows]
+
     # Default to the baselines sweep.py wrote for this exact benchmark. Passing a
     # headline results CSV instead is valid only when it used the same user sample --
     # catalogue-level metrics (Gini, catalogue coverage) do not transfer between sample

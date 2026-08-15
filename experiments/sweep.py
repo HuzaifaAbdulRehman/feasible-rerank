@@ -62,13 +62,21 @@ def main() -> None:
         cfg["data"]["n_users"] = args.n_users
     bench = build_benchmark(cfg)
 
+    # Default to the QUBO solvers only. The classical baselines ignore lam and mu, so
+    # sweeping them re-evaluates an identical list at every grid point -- pure cost,
+    # and it fills the sweep CSV with rows that look like a curve but are one point
+    # repeated. They are run once, separately, in the baseline block below.
     solvers = build_solvers(cfg)
     if args.solver:
         wanted = set(args.solver)
-        solvers = [s for s in solvers if s.name in wanted]
         missing = wanted - {s.name for s in solvers}
         if missing:
             raise SystemExit(f"solver(s) not enabled in {args.config}: {sorted(missing)}")
+        solvers = [s for s in solvers if s.name in wanted]
+    else:
+        solvers = [s for s in solvers if s.name.startswith("qubo")]
+        if not solvers:
+            raise SystemExit(f"no qubo solvers enabled in {args.config}")
 
     print(f"dataset: {bench.name}   users={len(bench.instances)}   "
           f"n={bench.instances[0].n}   k={bench.instances[0].k}")

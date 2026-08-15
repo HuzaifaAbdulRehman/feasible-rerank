@@ -305,11 +305,39 @@ def main() -> None:
         help="override the config's user count; useful for repeat studies, where a "
         "full-size run times the number of repeats is not worth the wall-clock",
     )
+    ap.add_argument(
+        "--lam",
+        type=float,
+        default=None,
+        help="override the config's diversity weight; use with --repeats to test an "
+        "operating point the sweep suggested, which a single sweep cell cannot settle",
+    )
+    ap.add_argument(
+        "--mu", type=float, default=None, help="override the config's fairness weight"
+    )
+    ap.add_argument(
+        "--solver",
+        nargs="+",
+        default=None,
+        help="restrict to these solver names; the rest are left unbuilt",
+    )
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text())
     if args.n_users:
         cfg["data"]["n_users"] = args.n_users
+    if args.lam is not None:
+        cfg["lam"] = args.lam
+    if args.mu is not None:
+        cfg["mu"] = args.mu
+    if args.solver:
+        wanted = set(args.solver)
+        # build_solvers reads boolean switches out of cfg['solvers']; turning the
+        # unwanted ones off is what keeps a restricted run from paying for qubo_sa.
+        for name in ("greedy", "mmr", "quota_mmr", "qubo_sa", "qubo_tabu", "qubo_feasible"):
+            key = "greedy_topk" if name == "greedy" else name
+            if isinstance(cfg["solvers"].get(name), bool):
+                cfg["solvers"][name] = key in wanted or name in wanted
 
     if args.repeats > 1:
         print(f"running {args.repeats} repeats of {args.config}\n")
