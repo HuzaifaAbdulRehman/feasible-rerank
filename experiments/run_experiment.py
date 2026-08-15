@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -161,6 +162,63 @@ def present(instance, selection: list[int]) -> list[int]:
     return sorted((int(i) for i in selection), key=lambda i: -relevance[i])
 
 
+#: Metrics defined for a single user's list, and therefore *paired* across methods --
+#: every method sees the same candidate set for the same user, so their per-user values
+#: can be differenced directly. Gini, catalogue coverage and the DPFR measures are
+#: population-level aggregates over all users and have no per-user counterpart; they
+#: cannot be paired and are absent here on purpose.
+PER_USER_METRICS = (
+    "ndcg@k",
+    "recall@k",
+    "category_coverage",
+    "exposure_parity",
+    "intra_list_sim",
+)
+
+
+@dataclass
+class Scored:
+    """Per-user metric vectors plus the catalogue-space lists aggregates need."""
+
+    per_user: dict[str, list[float]]
+    catalogue_selections: list[list[int]]
+    catalogue_relevant: list[set[int]]
+
+
+def score_selections(bench: Benchmark, raw_selections: list[list[int]]) -> Scored:
+    """Score already-computed selections, one row of numbers per user.
+
+    Factored out of :func:`evaluate_solver` so that the mean-reporting path and the
+    paired-testing path in :mod:`experiments.paired` cannot drift into computing "the
+    same" metric two different ways. Solving is deliberately not done here -- it happens
+    inside the energy-measurement window, and scoring must not.
+    """
+    has_ground_truth = any(bench.relevant)
+    out: dict[str, list[float]] = {m: [] for m in PER_USER_METRICS}
+    catalogue_selections: list[list[int]] = []
+    catalogue_relevant: list[set[int]] = []
+
+    for inst, relevant, raw in zip(
+        bench.instances, bench.relevant, raw_selections, strict=True
+    ):
+        sel = present(inst, raw)
+
+        out["ndcg@k"].append(ndcg_at_k(inst.relevance, sel))
+        out["category_coverage"].append(category_coverage(inst.groups, sel))
+        out["exposure_parity"].append(exposure_parity(inst.groups, sel))
+        out["intra_list_sim"].append(intra_list_similarity(inst.similarity, sel))
+        if has_ground_truth:
+            # Users whose held-out item never entered the candidate set score 0 rather
+            # than being dropped -- dropping them would quietly inflate recall by
+            # excluding exactly the hardest cases.
+            out["recall@k"].append(recall_at_k(sel, relevant))
+
+        catalogue_selections.append(inst.to_catalogue_ids(sel))
+        catalogue_relevant.append(set(inst.to_catalogue_ids(sorted(relevant))))
+
+    return Scored(out, catalogue_selections, catalogue_relevant)
+
+
 def evaluate_solver(solver, bench: Benchmark, measure: bool = True) -> dict:
     """Run one reranker over every instance and return a row of mean metrics.
 
@@ -182,27 +240,14 @@ def evaluate_solver(solver, bench: Benchmark, measure: bool = True) -> dict:
 
     reading = m.reading.as_dict() if m.reading else {}
 
-    catalogue_selections: list[list[int]] = []
-    catalogue_relevant: list[set[int]] = []
-    ndcgs, covs, parities, ils, recalls = [], [], [], [], []
-
-    for inst, relevant, raw in zip(
-        bench.instances, bench.relevant, raw_selections, strict=True
-    ):
-        sel = present(inst, raw)
-
-        ndcgs.append(ndcg_at_k(inst.relevance, sel))
-        covs.append(category_coverage(inst.groups, sel))
-        parities.append(exposure_parity(inst.groups, sel))
-        ils.append(intra_list_similarity(inst.similarity, sel))
-        if has_ground_truth:
-            # Users whose held-out item never entered the candidate set score 0 rather
-            # than being dropped -- dropping them would quietly inflate recall by
-            # excluding exactly the hardest cases.
-            recalls.append(recall_at_k(sel, relevant))
-
-        catalogue_selections.append(inst.to_catalogue_ids(sel))
-        catalogue_relevant.append(set(inst.to_catalogue_ids(sorted(relevant))))
+    scored = score_selections(bench, raw_selections)
+    ndcgs = scored.per_user["ndcg@k"]
+    covs = scored.per_user["category_coverage"]
+    parities = scored.per_user["exposure_parity"]
+    ils = scored.per_user["intra_list_sim"]
+    recalls = scored.per_user["recall@k"]
+    catalogue_selections = scored.catalogue_selections
+    catalogue_relevant = scored.catalogue_relevant
 
     exposure = item_exposure(catalogue_selections, bench.n_catalogue)
 

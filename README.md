@@ -49,8 +49,10 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    the other, the QUBO's advantage is not accuracy — it is feasibility.** At a fairness
    requirement of `τ ≤ 0.25`, no classical baseline can satisfy the constraint at *any*
    setting of its own hyperparameters, while `qubo_tabu` can and still returns NDCG
-   0.904. Loosen the requirement to `τ ≥ 0.30` and quota-MMR becomes feasible and ties:
-   0.9033 ± 0.0115 against 0.9043 ± 0.0109 — a gap of 0.001 against a spread of 0.011.
+   0.904. Loosen the requirement to `τ ≥ 0.30` and quota-MMR becomes feasible and the
+   accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
+   users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
+   **0.0012 NDCG**. Certain, and negligible.
 4. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
    wins intra-list similarity outright.
 
@@ -391,6 +393,58 @@ it is marked infeasible on the seeds where tuning landed just above. A paired pe
 test would extract far more from the same runs than comparing means over three seeds,
 and is the next item in Phase 2.
 
+### Paired per-user tests
+
+Comparing means over 3 seeds is a test with n=3. But every method sees the **identical
+candidate set for the identical user**, so their per-user scores are paired observations
+— and that is a test with n=200 on data already collected. The seeds were never the
+sample; the users are. Pairing also cancels the dominant variance term: users differ
+enormously in how predictable they are, and a user whose held-out purchase never entered
+the candidate set scores badly under every method.
+
+Wilcoxon signed-rank, two-sided, Holm-corrected across all 20 comparisons in the run.
+200 users, `λ=0, μ=1`, everything measured against `quota_mmr`
+(`results/amazon_lb_paired.csv`):
+
+| metric | method | median diff | 95% CI | better/worse/tied | p (Holm) |
+|---|---|---|---|---|---|
+| **exposure parity ↓** | qubo_tabu | **−0.1000** | [−0.1000, −0.1000] | 115 / **0** / 85 | 3e-25 |
+| | qubo_feasible | **−0.1000** | [−0.1000, −0.1000] | 115 / **0** / 85 | 3e-25 |
+| **NDCG@10 ↑** | qubo_tabu | **+0.0012** | [+0.0012, +0.0043] | 127 / 63 / 10 | 2e-07 |
+| | qubo_feasible | −0.0426 | [−0.0514, −0.0282] | 54 / 146 / 0 | 2e-04 |
+| | qubo_sa | −0.1362 | [−0.1542, −0.1084] | 33 / 167 / 0 | 8e-22 |
+| **recall@10 ↑** | qubo_tabu | 0.0000 | [0.0000, 0.0000] | 5 / 1 / 194 | 0.57 |
+| **intra-list sim ↓** | qubo_tabu | +0.0022 | [+0.0022, +0.0040] | 25 / 166 / 9 | 2e-27 |
+
+**Significant and negligible are not opposites, and the NDCG row is why this matters.**
+The seed-level comparison called `qubo_tabu` vs `quota_mmr` a tie — 0.9043 ± 0.0109
+against 0.9033 ± 0.0115. The paired test, with far more power, finds the difference is
+**real**: p ≈ 2×10⁻⁷, better on 127 users against 63. And its median size is
+**0.0012 NDCG**, with the interval topping out at 0.0043. Both readings are correct, and
+reporting either one alone would mislead. A table of p-values would have called this a
+win; a table of means called it a tie; it is a certain difference of almost no size.
+
+**The parity result has the opposite shape and is the one that carries weight.** A median
+improvement of 0.10, and **worse on zero users out of 200**. Not a marginal edge — a
+uniform one, and the same effect the fairness-budget curve shows from the other
+direction.
+
+**Recall does not move for any method** (194 of 200 users tied). Under leave-one-out
+there is at most one relevant item per user and the candidate-set ceiling is 0.49, so
+most users score identically under every reranker. Reporting a recall difference on this
+benchmark would be reporting noise.
+
+Two results the pairing strengthens rather than changes: `qubo_sa` sits at −0.136 NDCG
+against the baseline (p ≈ 8×10⁻²²), so the penalty-barrier finding now rests on 200
+paired observations rather than seed means; and `qubo_feasible` is **significantly worse
+than the classical baseline** at −0.043, which settles that the QUBO's advantage here
+belongs to `qubo_tabu` specifically and not to the formulation.
+
+> Read the interval, not the star. With 200 users a p-value of 10⁻²⁵ reports
+> *consistency*, not magnitude — `qubo_tabu` improves parity on every single user who
+> changes at all, which is what drives p down, and says nothing by itself about whether
+> 0.10 is a lot. The effect sizes and counts are in the table for that reason.
+
 ### Trade-off curves
 
 ![synthetic Pareto](results/synthetic_sweep_pareto.png)
@@ -566,9 +620,9 @@ qubo_rerank/
 ├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · feasible-set annealing
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
-experiments/        run_experiment · sweep · plot_pareto · tables
+experiments/        run_experiment · sweep · protocol · paired · plots · tables
 configs/            YAML experiment configs
-tests/              165 tests · 75% line coverage
+tests/              188 tests · 74% line coverage
 ```
 
 **If you are reading this to judge the work, three files carry it:**
@@ -603,15 +657,21 @@ The `qubo_sa` result survived comfortably, as predicted.
 Every method, baselines included, is now tuned on one half of the users under a declared
 fairness budget and scored on the other half.
 
+**Also done:** paired per-user significance testing (`experiments/paired.py`) — see
+[Paired per-user tests](#paired-per-user-tests). Wilcoxon signed-rank over 200 users with
+Holm correction, which is where "the two methods tie on NDCG" became the more precise
+"they differ by 0.0012, certainly."
+
 **Next in Phase 2, in priority order:**
 
-1. **Per-user paired tests.** All methods see identical candidate sets, so a paired
-   comparison over users is available and is far more powerful than comparing means over
-   a handful of seeds.
-2. **A second and third dataset.** One dataset with one similarity structure cannot tell
-   you whether the operating-point effect generalises.
-3. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
+1. **A second and third dataset.** One dataset with one similarity structure cannot tell
+   you whether the operating-point and feasibility effects generalise. This is now the
+   largest gap.
+2. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
    across machines. See the note on its wall-clock timeout below.
+3. **Paired tests inside the disjoint-split protocol.** The tests above run at a fixed
+   operating point; combining the two would test the selected configuration on the
+   evaluation half directly.
 
 ## Related work
 
