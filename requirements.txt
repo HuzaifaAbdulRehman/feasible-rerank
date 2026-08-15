@@ -1,6 +1,7 @@
 # Core: QUBO construction and sampling.
 dimod>=0.12
-dwave-neal>=0.6
+dwave-neal>=0.6      # SimulatedAnnealingSampler (qubo_sa)
+dwave-samplers>=1.3  # TabuSampler (qubo_tabu); Apache-2.0
 
 # Data, linear algebra, config.
 numpy>=1.24

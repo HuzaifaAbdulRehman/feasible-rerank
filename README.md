@@ -228,13 +228,21 @@ pytest tests/ -q
 python experiments/run_experiment.py --config configs/synthetic.yaml
 python experiments/run_experiment.py --config configs/amazon_lb.yaml
 
-python experiments/sweep.py --config configs/amazon_lb.yaml \
-  --lam 0.0 1.0 4.0 16.0 --mu 0.0 1.0 4.0 \
-  --solver qubo_feasible qubo_tabu --n-users 60
+# repeat studies -- 5 seeds, resampling users and solver seeds together
+python experiments/run_experiment.py --config configs/synthetic.yaml --repeats 5
+python experiments/run_experiment.py --config configs/amazon_lb.yaml --repeats 5 --n-users 60
 
-python experiments/plot_pareto.py --sweep results/amazon_lb_sweep.csv \
-  --baselines results/amazon_lb.csv
+# the sweep also writes amazon_lb_sweep_baselines.csv, on its own user sample
+python experiments/sweep.py --config configs/amazon_lb.yaml --n-users 40
+
+# picks up those matched baselines automatically -- do not pass results/amazon_lb.csv
+# instead; Gini and catalogue coverage are catalogue-level aggregates and do not
+# transfer between user-sample sizes
+python experiments/plot_pareto.py --sweep results/amazon_lb_sweep.csv
 ```
+
+Runs must be sequential. `seconds` and `kWh` are wall-clock measurements, so a second
+job on the same machine is reported as the first job's energy cost.
 
 ## Data and protocol
 
