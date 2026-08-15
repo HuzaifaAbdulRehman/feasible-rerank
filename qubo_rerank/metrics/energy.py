@@ -67,7 +67,7 @@ class measure_energy:
         self.reading: EnergyReading | None = None
         self._tracker: Any = None
 
-    def __enter__(self) -> "measure_energy":
+    def __enter__(self) -> measure_energy:
         if self.enabled:
             # log_level="error" keeps codecarbon's very chatty INFO output out of
             # experiment logs; save_to_file=False avoids littering emissions.csv

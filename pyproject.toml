@@ -13,3 +13,32 @@ minversion = "7.0"
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F are the baseline, I keeps imports ordered, UP catches syntax kept alive by habit,
+# B catches the mutable-default and loop-variable-capture class of bug. Deliberately
+# not the full rule set: this is a research repo, and a linter that objects to a
+# hand-derived formula written the way the paper writes it is worse than no linter.
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = [
+    # The experiment drivers must insert the repo root on sys.path before importing
+    # from it, because they are run as scripts rather than as an installed package.
+    # That puts imports after code by necessity, not by accident.
+    "E402",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests transcribe reference implementations and hand-worked examples; multiple
+# statements on one line keep a 4x4 matrix looking like a 4x4 matrix.
+"tests/*" = ["E501"]
+
+[tool.coverage.run]
+source = ["qubo_rerank", "benchmarks", "experiments"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]

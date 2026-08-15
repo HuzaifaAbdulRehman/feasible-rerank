@@ -50,7 +50,7 @@ class timed:
         self.into = into
         self.key = key
 
-    def __enter__(self) -> "timed":
+    def __enter__(self) -> timed:
         self._t0 = time.perf_counter()
         return self
 

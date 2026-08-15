@@ -194,7 +194,7 @@ class FeasibleAnnealing:
 
         return best_selection, exact, accepted, abs(exact - best_energy)
 
-    def solve(self, problem) -> SolveResult:  # noqa: ANN001
+    def solve(self, problem) -> SolveResult:
         stats: dict[str, Any] = {
             "num_restarts": self.num_restarts,
             "num_sweeps": self.num_sweeps,
@@ -242,7 +242,10 @@ class FeasibleAnnealing:
         # Accumulated-vs-recomputed discrepancy across restarts. Should sit at float
         # noise; anything larger means the swap bookkeeping is wrong, not imprecise.
         stats["energy_drift"] = float(worst_drift)
-        stats["energy"] = float(rp.bqm.energy({i: (1 if i in set(selection) else 0) for i in range(n)}))
+        chosen = set(selection)
+        stats["energy"] = float(
+            rp.bqm.energy({i: (1 if i in chosen else 0) for i in range(n)})
+        )
         stats["accepted_moves"] = total_accepted
         stats["beta_range"] = (hot, cold)
         stats["n_selected"] = len(selection)

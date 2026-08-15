@@ -21,17 +21,19 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-from scipy import sparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from benchmarks.loader import (  # noqa: E402
+from benchmarks.loader import (
+    RATINGS_COLUMNS,
     cosine_similarity,
     interaction_matrix,
     k_core,
     leave_one_out,
+    load_benchmark,
     popularity_tiers,
+    suggest_lam,
     top_k_neighbours,
 )
 
@@ -87,7 +89,7 @@ class TestKCore:
 
 class TestLeaveOneOut:
     def test_test_item_is_the_users_latest(self, ratings):
-        train, test = leave_one_out(ratings)
+        _, test = leave_one_out(ratings)
 
         for _, row in test.iterrows():
             latest = ratings[ratings.user_id == row.user_id].timestamp.max()
@@ -103,8 +105,8 @@ class TestLeaveOneOut:
         """The leakage check. A held-out item must not also be in training."""
         train, test = leave_one_out(ratings)
 
-        train_pairs = set(zip(train.user_id, train.item_id, train.timestamp))
-        test_pairs = set(zip(test.user_id, test.item_id, test.timestamp))
+        train_pairs = set(zip(train.user_id, train.item_id, train.timestamp, strict=True))
+        test_pairs = set(zip(test.user_id, test.item_id, test.timestamp, strict=True))
         assert train_pairs.isdisjoint(test_pairs)
 
     def test_split_loses_no_interactions(self, ratings):
@@ -198,8 +200,8 @@ class TestCosineSimilarity:
         sharing 200 out of 200. Shrink is what separates them, and it must bite harder
         on the thin pair.
         """
-        thin = [("t%d" % u, item, 1.0, u) for u in range(2) for item in ["a", "b"]]
-        thick = [("k%d" % u, item, 1.0, u) for u in range(200) for item in ["c", "d"]]
+        thin = [(f"t{u}", item, 1.0, u) for u in range(2) for item in ["a", "b"]]
+        thick = [(f"k{u}", item, 1.0, u) for u in range(200) for item in ["c", "d"]]
         matrix, _, item_ids = interaction_matrix(frame(thin + thick))
 
         raw = cosine_similarity(matrix, shrink=0.0)
@@ -271,3 +273,111 @@ class TestPopularityTiers:
 
         order = np.argsort(-popularity)
         assert list(tiers[order]) == sorted(tiers[order])
+
+
+# ------------------------------------------------------------ end-to-end loading
+
+
+@pytest.fixture
+def ratings_csv(tmp_path: Path) -> Path:
+    """A synthetic ratings file in the Amazon export's column order.
+
+    Small, but structured the way the real file is: a popularity gradient so tiers are
+    non-degenerate, overlapping user histories so ItemKNN has co-occurrence to work
+    with, and strictly increasing timestamps so the leave-one-out split is well defined.
+    Writing one here means the whole real-data path is covered in CI without a 24 MB
+    download.
+    """
+    rng = np.random.default_rng(0)
+    n_users, n_items = 60, 40
+    rows = []
+    stamp = 1_000_000
+
+    # Zipf-ish: item j is chosen with weight 1/(j+1), so tier 0 is a genuine short head.
+    weights = 1.0 / (np.arange(n_items) + 1.0)
+    weights /= weights.sum()
+
+    for u in range(n_users):
+        picks = rng.choice(n_items, size=12, replace=False, p=weights)
+        for item in picks:
+            stamp += 1
+            rows.append((f"item{item:03d}", f"user{u:03d}", 5.0, stamp))
+
+    path = tmp_path / "ratings.csv"
+    pd.DataFrame(rows, columns=RATINGS_COLUMNS).to_csv(path, index=False, header=False)
+    return path
+
+
+class TestLoadBenchmark:
+    def test_builds_instances_of_the_requested_shape(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=10, n_candidates=15, k=4, n_groups=4)
+
+        assert len(bench.instances) == 10
+        for inst in bench.instances:
+            assert inst.n == 15
+            assert inst.k == 4
+            assert inst.relevance.shape == (15,)
+            assert inst.similarity.shape == (15, 15)
+            assert set(np.unique(inst.groups)) <= {0, 1, 2, 3}
+
+    def test_candidates_arrive_sorted_by_descending_relevance(self, ratings_csv):
+        """The README states present() is a no-op on real data because of this.
+
+        If the loader ever stopped sorting, that claim would silently become false and
+        the QUBO methods would start being charged for an ordering they never chose.
+        """
+        bench = load_benchmark(ratings_csv, n_users=8, n_candidates=12, k=4)
+
+        for inst in bench.instances:
+            assert np.all(np.diff(inst.relevance) <= 1e-12)
+
+    def test_relevance_is_rescaled_into_unit_range(self, ratings_csv):
+        """lam and mu are only comparable across benchmarks if relevance is."""
+        bench = load_benchmark(ratings_csv, n_users=8, n_candidates=12, k=4)
+
+        for inst in bench.instances:
+            assert inst.relevance.min() >= -1e-9
+            assert inst.relevance.max() <= 1.0 + 1e-9
+
+    def test_held_out_item_is_never_in_the_training_signal(self, ratings_csv):
+        """Ground truth indices must point inside the candidate set, or nowhere."""
+        bench = load_benchmark(ratings_csv, n_users=10, n_candidates=15, k=4)
+
+        for inst, relevant in zip(bench.instances, bench.relevant, strict=True):
+            for idx in relevant:
+                assert 0 <= idx < inst.n
+
+    def test_candidate_hit_rate_matches_the_labels(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=12, n_candidates=15, k=4)
+        expected = sum(1 for r in bench.relevant if r) / len(bench.relevant)
+
+        assert bench.candidate_hit_rate == pytest.approx(expected)
+        assert 0.0 <= bench.candidate_hit_rate <= 1.0
+
+    def test_weights_are_carried_onto_every_instance(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=5, n_candidates=12, k=4, lam=2.5, mu=1.5)
+
+        assert all(i.lam == 2.5 and i.mu == 1.5 for i in bench.instances)
+
+    def test_seed_is_reproducible(self, ratings_csv):
+        a = load_benchmark(ratings_csv, n_users=6, n_candidates=12, k=4, seed=3)
+        b = load_benchmark(ratings_csv, n_users=6, n_candidates=12, k=4, seed=3)
+
+        assert [i.item_ids for i in a.instances] == [i.item_ids for i in b.instances]
+
+    def test_stats_report_the_filtering(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=6, n_candidates=12, k=4)
+
+        assert bench.stats["raw_interactions"] >= bench.stats["core_interactions"]
+        assert bench.stats["items"] > 0
+        assert 0.0 < bench.stats["density"] <= 1.0
+
+
+class TestSuggestLam:
+    def test_returns_a_positive_scale(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=8, n_candidates=12, k=4)
+
+        assert suggest_lam(bench.instances) > 0.0
+
+    def test_empty_input_falls_back_rather_than_dividing_by_zero(self):
+        assert suggest_lam([]) == 1.0

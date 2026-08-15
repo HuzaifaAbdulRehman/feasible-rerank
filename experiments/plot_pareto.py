@@ -29,8 +29,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-import matplotlib.pyplot as plt  # noqa: E402
-import pandas as pd  # noqa: E402
+import matplotlib.pyplot as plt
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -117,7 +117,7 @@ def main() -> None:
     )
     axes = axes[0]
 
-    for ax, (cost, xlabel, note) in zip(axes, axes_to_plot):
+    for ax, (cost, xlabel, note) in zip(axes, axes_to_plot, strict=True):
         for method, group in sweep.groupby("method"):
             colour, marker = SWEEP_STYLE.get(method, ("tab:purple", "o"))
             ax.scatter(
@@ -154,7 +154,7 @@ def main() -> None:
 
     # One legend for the figure; the three panels share every series.
     handles, labels = axes[0].get_legend_handles_labels()
-    unique = dict(zip(labels, handles))
+    unique = dict(zip(labels, handles, strict=True))
     fig.legend(
         unique.values(),
         unique.keys(),

@@ -27,7 +27,7 @@ class SimulatedAnnealing:
         self.seed = seed
         self._sampler = neal.SimulatedAnnealingSampler()
 
-    def solve(self, problem) -> SolveResult:  # noqa: ANN001
+    def solve(self, problem) -> SolveResult:
         stats: dict[str, Any] = {"num_reads": self.num_reads}
 
         with timed(stats, "build_time"):

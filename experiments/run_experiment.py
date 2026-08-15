@@ -30,14 +30,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from benchmarks.loader import Benchmark, load_benchmark  # noqa: E402
-from benchmarks.synthetic import make_users  # noqa: E402
-from qubo_rerank.metrics.dpfr import (  # noqa: E402
+from benchmarks.loader import Benchmark, load_benchmark
+from benchmarks.synthetic import make_users
+from qubo_rerank.metrics.dpfr import (
     individual_item_fairness,
     item_better_off,
 )
-from qubo_rerank.metrics.energy import measure_energy  # noqa: E402
-from qubo_rerank.metrics.fairness import (  # noqa: E402
+from qubo_rerank.metrics.energy import measure_energy
+from qubo_rerank.metrics.fairness import (
     catalogue_coverage,
     category_coverage,
     exposure_parity,
@@ -45,8 +45,8 @@ from qubo_rerank.metrics.fairness import (  # noqa: E402
     intra_list_similarity,
     item_exposure,
 )
-from qubo_rerank.metrics.relevance import ndcg_at_k, recall_at_k  # noqa: E402
-from qubo_rerank.solvers import (  # noqa: E402
+from qubo_rerank.metrics.relevance import ndcg_at_k, recall_at_k
+from qubo_rerank.solvers import (
     MMR,
     FeasibleAnnealing,
     GreedyTopK,
@@ -186,7 +186,9 @@ def evaluate_solver(solver, bench: Benchmark, measure: bool = True) -> dict:
     catalogue_relevant: list[set[int]] = []
     ndcgs, covs, parities, ils, recalls = [], [], [], [], []
 
-    for inst, relevant, raw in zip(bench.instances, bench.relevant, raw_selections):
+    for inst, relevant, raw in zip(
+        bench.instances, bench.relevant, raw_selections, strict=True
+    ):
         sel = present(inst, raw)
 
         ndcgs.append(ndcg_at_k(inst.relevance, sel))
@@ -385,7 +387,10 @@ def main() -> None:
     for key, value in bench.stats.items():
         print(f"  {key:20s} {value}")
     if any(bench.relevant):
-        print(f"  {'candidate_hit_rate':20s} {bench.candidate_hit_rate:.4f}   <- ceiling on recall@k")
+        print(
+            f"  {'candidate_hit_rate':20s} {bench.candidate_hit_rate:.4f}"
+            "   <- ceiling on recall@k"
+        )
     print(
         f"\nlam={cfg.get('lam')}  mu={cfg.get('mu')}  users={len(bench.instances)}  "
         f"n={bench.instances[0].n}  k={bench.instances[0].k}\n"

@@ -104,4 +104,4 @@ def exposure_targets_proportional(
     groups = np.asarray(groups).ravel()
     n = groups.shape[0]
     unique, counts = np.unique(groups, return_counts=True)
-    return {int(g): k * (c / n) for g, c in zip(unique, counts)}
+    return {int(g): k * (c / n) for g, c in zip(unique, counts, strict=True)}

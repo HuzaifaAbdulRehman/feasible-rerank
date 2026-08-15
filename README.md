@@ -1,5 +1,9 @@
 # qubo-rerank
 
+[![tests](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml/badge.svg)](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Fair and energy-aware recommendation list selection via QUBO.**
 
 Conventional recommenders pick the top-k items greedily by score. The resulting lists are
@@ -466,13 +470,21 @@ swapping the real thing back in is a loader change and nothing else.
 ```
 qubo_rerank/
 ├── formulations/   objective · cardinality · fairness · builder
-├── decomposition/  (Phase 3) sparsification · clustering · hierarchical selection
 ├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · feasible-set annealing
-└── metrics/        NDCG · recall · coverage · Gini · exposure parity · kWh · CO2e
+└── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
-experiments/        run_experiment · sweep · plot_pareto
+experiments/        run_experiment · sweep · plot_pareto · tables
 configs/            YAML experiment configs
+tests/              142 tests · 77% line coverage
 ```
+
+**If you are reading this to judge the work, three files carry it:**
+
+| file | why |
+|---|---|
+| [`qubo_rerank/solvers/feasible.py`](qubo_rerank/solvers/feasible.py) | the constraint-preserving annealer, and the response to the penalty-barrier finding |
+| [`tests/test_solvers.py`](tests/test_solvers.py) | `TestPenaltyBarrier` — the four tests that hold the headline claim up |
+| [`benchmarks/loader.py`](benchmarks/loader.py) | the real-data pipeline; ItemKNN in ~40 lines of scipy rather than 2.5 GB of torch |
 
 ## Roadmap
 

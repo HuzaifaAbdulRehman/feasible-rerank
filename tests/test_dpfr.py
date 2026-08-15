@@ -121,8 +121,8 @@ class TestBehaviour:
         n_users, n_items, k = 12, 30, 5
         relevant = [{u} for u in range(n_users)]
 
-        best = [[u] + [i for i in range(n_items) if i != u][: k - 1] for u in range(n_users)]
-        worst = [[i for i in range(n_items) if i != u][: k - 1] + [u] for u in range(n_users)]
+        best = [[u, *[i for i in range(n_items) if i != u][: k - 1]] for u in range(n_users)]
+        worst = [[*[i for i in range(n_items) if i != u][: k - 1], u] for u in range(n_users)]
 
         best_iif, _ = individual_item_fairness(best, relevant, n_items)
         worst_iif, _ = individual_item_fairness(worst, relevant, n_items)

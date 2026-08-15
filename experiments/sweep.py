@@ -29,7 +29,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from experiments.run_experiment import (  # noqa: E402
+from experiments.run_experiment import (
     build_benchmark,
     build_solvers,
     evaluate_solver,

@@ -7,10 +7,10 @@ from .objective import build_objective
 
 __all__ = [
     "RerankProblem",
-    "build_problem",
-    "suggest_strength",
     "build_cardinality",
     "build_fairness",
-    "exposure_targets_proportional",
     "build_objective",
+    "build_problem",
+    "exposure_targets_proportional",
+    "suggest_strength",
 ]

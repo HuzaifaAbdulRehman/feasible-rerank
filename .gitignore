@@ -26,3 +26,9 @@ results/*.log
 .vscode/
 .idea/
 .DS_Store
+
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/

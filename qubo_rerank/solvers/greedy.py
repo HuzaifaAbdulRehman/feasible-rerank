@@ -14,8 +14,6 @@ QUBO is not the only method being asked to satisfy exposure constraints.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 import numpy as np
 
 from .base import SolveResult, timed
@@ -26,7 +24,7 @@ class GreedyTopK:
 
     name = "greedy_topk"
 
-    def solve(self, problem) -> SolveResult:  # noqa: ANN001 - duck-typed
+    def solve(self, problem) -> SolveResult:
         stats: dict = {}
         with timed(stats, "solve_time"):
             order = np.argsort(-np.asarray(problem.relevance, dtype=float))
@@ -50,7 +48,7 @@ class MMR:
     def __init__(self, lam: float = 0.5) -> None:
         self.lam = lam
 
-    def solve(self, problem) -> SolveResult:  # noqa: ANN001
+    def solve(self, problem) -> SolveResult:
         stats: dict = {"lam": self.lam}
         rel = _unit_scale(np.asarray(problem.relevance, dtype=float))
         sim = _unit_scale(np.asarray(problem.similarity, dtype=float))
@@ -88,7 +86,7 @@ class QuotaMMR:
     def __init__(self, lam: float = 0.5) -> None:
         self.lam = lam
 
-    def solve(self, problem) -> SolveResult:  # noqa: ANN001
+    def solve(self, problem) -> SolveResult:
         stats: dict = {"lam": self.lam}
         if problem.groups is None:
             raise ValueError("QuotaMMR requires group labels")

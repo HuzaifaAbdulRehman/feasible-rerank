@@ -54,7 +54,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from qubo_rerank.problem import RerankInstance  # noqa: E402
+from qubo_rerank.problem import RerankInstance
 
 RATINGS_URL = (
     "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/"
@@ -94,9 +94,9 @@ def k_core(df: pd.DataFrame, min_interactions: int = 5, max_iter: int = 30) -> p
     for _ in range(max_iter):
         user_counts = df.user_id.value_counts()
         item_counts = df.item_id.value_counts()
-        keep = df.user_id.isin(user_counts[user_counts >= min_interactions].index) & df.item_id.isin(
-            item_counts[item_counts >= min_interactions].index
-        )
+        keep = df.user_id.isin(
+            user_counts[user_counts >= min_interactions].index
+        ) & df.item_id.isin(item_counts[item_counts >= min_interactions].index)
         if keep.all():
             break
         df = df[keep]

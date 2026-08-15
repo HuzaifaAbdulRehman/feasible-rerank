@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: "qubo-rerank: fair, energy-aware recommendation list selection via QUBO"
+message: "If you use this software or its findings, please cite it."
+type: software
+authors:
+  - given-names: Huzaifa
+    family-names: Abdul Rehman
+# TODO: add `repository-code:` once the repository is published. Left out rather than
+# guessed, because a citation file pointing at a URL that does not exist is worse than
+# one that omits it.
+license: MIT
+keywords:
+  - recommender-systems
+  - quantum-annealing
+  - QUBO
+  - fairness
+  - green-computing
+abstract: >-
+  Selects a k-item recommendation list by minimising a QUBO over relevance,
+  intra-list diversity and group exposure fairness, with exact-k enforced as a
+  penalty term, and reports the energy cost of doing so.
+
+  Two findings are documented. First, the textbook recipe -- penalty-encoded
+  cardinality handed to a single-flip simulated annealer -- fails silently at
+  realistic candidate-set sizes: two feasible k-sets are never adjacent under
+  single-spin-flip moves, so the sampler returns lists that are always the right
+  length and close to arbitrary among lists of that length, losing to a greedy MMR
+  baseline on its own objective. Tabu search and a constraint-preserving swap
+  annealer both recover roughly a factor of two.
+
+  Second, the choice of the diversity and fairness weights decides the
+  QUBO-versus-classical comparison by a larger margin than the methods differ from
+  one another; a comparison run with the fairness term disabled reverses the
+  conclusion.
