@@ -1,0 +1,53 @@
+# MovieLens 100K -- the cross-domain check, and the only benchmark with real categories.
+#
+# Download once:
+#   curl --create-dirs -o data/ml100k/ml-100k.zip \
+#     https://files.grouplens.org/datasets/movielens/ml-100k.zip
+#   cd data/ml100k && unzip ml-100k.zip
+#
+# After 5-core filtering: 99,287 interactions, 943 users, 1,349 films, density 0.0773 --
+# an order of magnitude denser than any Amazon category here, and a much easier retrieval
+# problem (candidate-set ceiling on recall 0.665 against Luxury Beauty's 0.490).
+#
+# This dataset exists in the benchmark to remove two limitations at once. Every other
+# result is from one marketplace, and every other group partition is *popularity tiers* --
+# groups defined by the same signal the recommender is biased on. MovieLens ships curator-
+# assigned genre labels, so the fairness constraint here is over categories that mean
+# something to a person: Drama / Comedy / Romance / other, sized 253 / 216 / 162 / 718
+# after filtering.
+#
+# If the feasibility result holds here too, it is not an artefact of fairness groups that
+# happen to align with popularity.
+
+seed: 0
+measure_energy: true
+
+lam: 1.0        # similarity is far denser here than on Amazon, so lam bites sooner
+mu: 0.0
+
+dataset:
+  source: movielens
+  path: data/ml100k/ml-100k
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 200
+  n_groups: 4                # Drama / Comedy / Romance / other
+  k: 10
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

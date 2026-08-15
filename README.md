@@ -53,9 +53,10 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
    users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
    **0.0012 NDCG**. Certain, and negligible.
-4. **That feasibility result holds on 3 of 3 catalogues** differing by an order of
-   magnitude in size and 6.6× in density. It is strongest on the smallest and densest,
-   where the QUBO takes both a tighter budget and +0.20 NDCG.
+4. **That feasibility result holds on 5 of 5 catalogues**, spanning 77× in size and 63×
+   in density, across two domains — and on MovieLens the groups are curator-assigned
+   **genres**, not popularity tiers, which closes the obvious objection that the QUBO
+   only wins because the groups are defined by the same signal it exploits.
 5. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
    wins intra-list similarity outright.
 
@@ -478,28 +479,40 @@ to differ in the ways that should matter:
 
 Identical budgets, grids and seeds throughout — nothing is tuned per catalogue.
 
+Five catalogues, two domains. The last is the important one: **MovieLens groups are
+curator-assigned genres** (Drama / Comedy / Romance / other), not popularity tiers, so it
+tests the constraint against categories defined independently of the data being scored.
+
+| dataset | items | density | groups from |
+|---|---|---|---|
+| Gift Cards | 147 | 0.0442 | popularity tier |
+| Software | 729 | 0.0096 | popularity tier |
+| Luxury Beauty | 1,366 | 0.0067 | popularity tier |
+| Digital Music | 11,268 | 0.0007 | popularity tier |
+| **MovieLens 100K** | 1,349 | 0.0773 | **genre** |
+
 **Reach** — the tightest fairness budget each method meets *on every seed*. Lower is a
 stronger guarantee:
 
-| method | Gift Cards | Luxury Beauty | Software |
-|---|---|---|---|
-| greedy_topk | — | — | 1.00 |
-| mmr | 1.00 | 1.00 | 1.00 |
-| quota_mmr | 0.25 | 0.30 | 0.30 |
-| **qubo_tabu** | **0.20** | **0.22** | **0.20** |
-| **qubo_feasible** | **0.20** | **0.22** | **0.20** |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
+|---|---|---|---|---|---|
+| greedy_topk | — | — | — | 1.00 | — |
+| mmr | 1.00 | 1.00 | — | 1.00 | 1.00 |
+| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 |
+| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
+| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
 
 NDCG@10 delivered at that tightest budget:
 
-| method | Gift Cards | Luxury Beauty | Software |
-|---|---|---|---|
-| quota_mmr | 0.5540 | 0.9034 | 0.9033 |
-| **qubo_tabu** | **0.7589** | 0.9044 | 0.9026 |
-| qubo_feasible | 0.7253 | 0.8475 | 0.8333 |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
+|---|---|---|---|---|---|
+| quota_mmr | 0.5540 | 0.9034 | 0.8398 | 0.9033 | **0.9069** |
+| **qubo_tabu** | **0.7589** | 0.9044 | 0.8457 | 0.9026 | 0.9009 |
+| qubo_feasible | 0.7253 | 0.8475 | 0.7573 | 0.8333 | 0.8111 |
 
 ![cross-dataset fairness budget curves](results/datasets_budget.png)
 
-**Holds on 3 of 3.** And Gift Cards is the interesting one — it was included precisely
+**Holds on 5 of 5.** Gift Cards is the interesting one — it was included precisely
 because it was the case most likely to break the result, being small and dense enough
 that a greedy heuristic has room to do well. Instead the QUBO wins *both* axes there:
 a tighter reach **and** +0.20 NDCG at it. That matches what the config predicted before
@@ -513,6 +526,14 @@ on a group that later proves cheap to fill is not recoverable. The QUBO chooses 
 whole allocation at once and reaches the floor. Gift Cards' smaller candidate set
 loosens the constraint enough for quota-MMR to reach 0.25, which is consistent with the
 same explanation.
+
+**MovieLens is the one that closes the argument.** Every other benchmark groups items by
+popularity tier — a partition derived from the very interaction counts being evaluated,
+so a sceptic can reasonably say the QUBO only wins because those groups are structurally
+easy to balance. MovieLens groups by genre, assigned by the dataset's curators, and the
+result is unchanged: reach 0.20 against quota-MMR's 0.25. Note also that quota-MMR is
+*slightly more accurate* there (0.9069 vs 0.9009) while still unable to meet the tighter
+budget — which is the whole claim in one row.
 
 **This is the strongest claim in the repo**, and it is a claim about *when* to use the
 method rather than that the method is better: below a group-exposure requirement of

@@ -19,3 +19,8 @@ amazon_software,mmr,1.0,0.9917230935449681
 amazon_software,quota_mmr,0.3,0.903283017431554
 amazon_software,qubo_tabu,0.2,0.9025886047185864
 amazon_software,qubo_feasible,0.2,0.8333175336903209
+movielens,greedy_topk,,
+movielens,mmr,1.0,0.5989513249283173
+movielens,quota_mmr,0.25,0.9068944657611467
+movielens,qubo_tabu,0.2,0.9009005002605525
+movielens,qubo_feasible,0.2,0.8111175113450253

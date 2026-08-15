@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from benchmarks.loader import Benchmark, load_benchmark
+from benchmarks.movielens import load_movielens
 from benchmarks.synthetic import make_users
 from qubo_rerank.metrics.dpfr import (
     individual_item_fairness,
@@ -137,7 +138,28 @@ def build_benchmark(cfg: dict) -> Benchmark:
             seed=cfg.get("seed", 0),
         )
 
-    raise ValueError(f"unknown dataset source {source!r}; expected 'synthetic' or 'amazon'")
+    if source == "movielens":
+        # Same pipeline as the Amazon path; the difference is that groups come from the
+        # curators' genre labels rather than from popularity tiers computed on the very
+        # interactions being evaluated.
+        return load_movielens(
+            path=ROOT / dataset.get("path", "data/ml100k/ml-100k"),
+            n_users=data.get("n_users", 200),
+            n_candidates=data.get("n_items", 200),
+            k=data.get("k", 10),
+            n_groups=data.get("n_groups", 4),
+            min_interactions=dataset.get("min_interactions", 5),
+            topk_neighbours=dataset.get("topk_neighbours", 100),
+            shrink=dataset.get("shrink", 100.0),
+            binary=dataset.get("binary", True),
+            lam=cfg.get("lam", 1.0),
+            mu=cfg.get("mu", 0.0),
+            seed=cfg.get("seed", 0),
+        )
+
+    raise ValueError(
+        f"unknown dataset source {source!r}; expected 'synthetic', 'amazon' or 'movielens'"
+    )
 
 
 def present(instance, selection: list[int]) -> list[int]:

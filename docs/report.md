@@ -23,8 +23,9 @@ succeed. Third, under a protocol that tunes every method — baselines included 
 disjoint half of the users, the QUBO's advantage is not accuracy but **feasibility**:
 below a group-exposure requirement of τ ≈ 0.25, no classical reranker tested can satisfy
 the constraint at any setting of its own hyperparameters, and the QUBO can. This holds on
-three Amazon categories differing by an order of magnitude in catalogue size and 6.6× in
-density.
+**five catalogues across two domains** — four Amazon categories spanning 77× in size and
+63× in density, plus MovieLens 100K, where the groups are curator-assigned genres rather
+than popularity tiers.
 
 We also report what the method does *not* buy: at looser fairness requirements it ties
 the strongest baseline on accuracy (a paired test over 200 users puts the difference at
@@ -174,23 +175,30 @@ reported at their least-bad setting alongside methods that met it.
 
 **Reach** — the tightest budget a method meets on *every* seed:
 
-| method | Gift Cards | Luxury Beauty | Software |
-|---|---|---|---|
-| greedy top-k | — | — | 1.00 |
-| MMR | 1.00 | 1.00 | 1.00 |
-| quota-MMR | 0.25 | 0.30 | 0.30 |
-| **QUBO + tabu** | **0.20** | **0.22** | **0.20** |
-| **QUBO + swap annealing** | **0.20** | **0.22** | **0.20** |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
+|---|---|---|---|---|---|
+| greedy top-k | — | — | — | 1.00 | — |
+| MMR | 1.00 | 1.00 | — | 1.00 | 1.00 |
+| quota-MMR | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 |
+| **QUBO + tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
+| **QUBO + swap annealing** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
 
 NDCG@10 at that reach:
 
-| method | Gift Cards | Luxury Beauty | Software |
-|---|---|---|---|
-| quota-MMR | 0.5540 | 0.9034 | 0.9033 |
-| QUBO + tabu | **0.7589** | 0.9044 | 0.9026 |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
+|---|---|---|---|---|---|
+| quota-MMR | 0.5540 | 0.9034 | 0.8398 | 0.9033 | **0.9069** |
+| QUBO + tabu | **0.7589** | 0.9044 | 0.8457 | 0.9026 | 0.9009 |
 
-The result holds on all three catalogues, which span 147–1,366 items and 0.0067–0.0442
-density. It is strongest on the smallest and densest (Gift Cards), where the QUBO takes
+The result holds on all five catalogues, spanning 147–11,268 items and 0.0007–0.0773
+density, across two domains.
+
+**MovieLens closes the obvious objection.** The four Amazon benchmarks group items by
+popularity tier -- a partition derived from the same interaction counts being evaluated,
+so a sceptic can fairly argue the QUBO wins only because those groups are structurally
+easy to balance. MovieLens groups by curator-assigned genre, and the result is unchanged.
+It also shows the claim in its cleanest form: quota-MMR is *more accurate* there
+(0.9069 vs 0.9009) and still cannot meet the tighter budget. It is strongest on the smallest and densest (Gift Cards), where the QUBO takes
 both a tighter budget and +0.20 NDCG — consistent with small `n` being where
 exhaustive-ish search should pay off.
 
@@ -272,7 +280,8 @@ slow solvers on identical hardware.
 4. **Candidate sets are small** (n=100–200). The scaling question — whether any of this
    survives a catalogue an order of magnitude larger — is now *tractable* thanks to the
    sparse similarity path, but has not been run.
-5. **Three catalogues, all Amazon.** Cross-domain generalisation is untested.
+5. **Five catalogues, four of them Amazon.** MovieLens adds a second domain and the only
+   non-popularity group partition, but breadth beyond retail and film is untested.
 6. **No physical quantum hardware.** Everything here is classical or quantum-*inspired*.
 
 ---
