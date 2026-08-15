@@ -1,0 +1,56 @@
+# Amazon Digital Music -- the large, sparse catalogue.
+#
+# Download once (~66 MB):
+#   curl --create-dirs -o data/amazon_Digital_Music/Digital_Music.csv \
+#     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Digital_Music.csv
+#
+# After 5-core filtering: 166,942 interactions, 16,252 users, 11,268 items,
+# density 0.00070. Eight times Luxury Beauty's catalogue and 63x sparser than Gift
+# Cards, which is the point: with this the four benchmarks span two orders of magnitude
+# in catalogue size and roughly the same in density.
+#
+# This dataset is the reason benchmarks/loader.py grew a sparse similarity path. A dense
+# item-item matrix here is 11,268^2 * 8 bytes = 1,016 MB, which is what the loader's
+# docstring had always warned about in the abstract. Via the sparse path the benchmark
+# builds in 6.4 s at a 270 MB peak, so the limit is now the QUBO's own O(n^2) reranking
+# cost rather than the catalogue.
+#
+# Note the retrieval problem is much harder here: the candidate-set ceiling on recall is
+# 0.20, against 0.49 on Luxury Beauty. A held-out track is simply less likely to appear
+# in a 200-item shortlist drawn from an 11k catalogue. Read recall against that, and
+# expect the accuracy numbers to sit lower across every method.
+
+seed: 0
+measure_energy: true
+
+lam: 6.0        # loader.suggest_lam reports 6.14 on this catalogue
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Digital_Music/Digital_Music.csv
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+  # Left implicit: load_benchmark picks the sparse path automatically once the dense
+  # matrix would exceed its byte budget, which this catalogue does by a factor of four.
+
+data:
+  n_users: 200
+  n_items: 200               # retrieval top-N == QUBO problem size
+  n_groups: 4
+  k: 10
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120
