@@ -22,13 +22,34 @@ class SimulatedAnnealing:
 
     name = "qubo_sa"
 
-    def __init__(self, num_reads: int = 100, seed: int | None = None) -> None:
+    def __init__(
+        self,
+        num_reads: int = 100,
+        num_sweeps: int | None = None,
+        seed: int | None = None,
+    ) -> None:
+        """
+        Args:
+            num_reads: independent anneals; the lowest-energy sample is kept.
+            num_sweeps: sweeps per anneal. ``None`` leaves neal's default (1000).
+            seed: RNG seed.
+
+        ``num_sweeps`` is exposed so the compute budget can be varied deliberately.
+        This project's central claim is that penalty-encoded cardinality defeats this
+        sampler for structural reasons, and the first objection to that is always "you
+        did not run it long enough" -- which is unanswerable unless the budget is a
+        parameter. See ``experiments/sensitivity.py``.
+        """
         self.num_reads = num_reads
+        self.num_sweeps = num_sweeps
         self.seed = seed
         self._sampler = neal.SimulatedAnnealingSampler()
 
     def solve(self, problem) -> SolveResult:
-        stats: dict[str, Any] = {"num_reads": self.num_reads}
+        stats: dict[str, Any] = {
+            "num_reads": self.num_reads,
+            "num_sweeps": self.num_sweeps,
+        }
 
         with timed(stats, "build_time"):
             rp = build_problem(
@@ -42,6 +63,8 @@ class SimulatedAnnealing:
             )
 
         kwargs: dict[str, Any] = {"num_reads": self.num_reads}
+        if self.num_sweeps is not None:
+            kwargs["num_sweeps"] = self.num_sweeps
         if self.seed is not None:
             kwargs["seed"] = self.seed
 
