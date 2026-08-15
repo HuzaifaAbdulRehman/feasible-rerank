@@ -23,7 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from experiments.compare_datasets import load, reach  # noqa: E402
+from experiments.compare_datasets import load, reach
 
 
 def protocol_rows(rows: list[tuple]) -> pd.DataFrame:
