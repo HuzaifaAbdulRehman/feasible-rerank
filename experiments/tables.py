@@ -163,10 +163,13 @@ def main() -> None:
         repeats = RESULTS / f"{stem}_repeats.csv"
         if repeats.exists():
             frame = pd.read_csv(repeats)
+            # Skip all-NaN columns: the synthetic benchmark has no held-out purchase,
+            # so recall is undefined there and a column of "-- ± --" is worse than no
+            # column at all.
             metrics = [
                 m
                 for m in ["ndcg@k", "recall@k", "exposure_parity", "gini", "seconds"]
-                if m in frame.columns
+                if m in frame.columns and frame[m].notna().any()
             ]
             print(f"\n### {stem} -- repeat study\n")
             print(repeats_table(frame, metrics))

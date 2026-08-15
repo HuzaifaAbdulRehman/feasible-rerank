@@ -8,8 +8,9 @@ instead selects the *entire list at once* as a Quadratic Unconstrained Binary Op
 (QUBO) problem, jointly balancing relevance, diversity, and exposure fairness — and reports
 the energy cost of doing so.
 
-> Status: **Phase 1 complete** — end-to-end on real data, with a negative result about the
-> standard QUBO recipe that turned out to be the most interesting thing here.
+> Status: **Phase 1 complete, Phase 2 under way** — end-to-end on real data, every
+> headline comparison averaged over 5 seeds, and a negative result about the standard
+> QUBO recipe that turned out to be the most interesting thing here.
 
 ## The formulation
 
@@ -30,13 +31,24 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
 1. **The standard QUBO recipe is broken, and it fails silently.** Penalty-encoded
    cardinality plus a single-flip annealer produces lists that are always the right
    length and close to arbitrary among lists of that length. Two fixes are implemented
-   here, each ~2× better on the annealer's own objective.
-2. **Even fixed, QUBO reranking loses to a classical baseline on real data.** Group-quota
-   MMR beats every QUBO variant on NDCG, recall, exposure parity and IBO, in 0.5 seconds
-   against 118 and 1/220th the energy.
+   here, each ~2× better on the annealer's own objective. Across 5 seeds `qubo_sa`
+   scores 0.475 ± 0.030 NDCG against 0.692 ± 0.038 for the fixed solvers — a gap of
+   more than five standard deviations.
+2. **The choice of `λ` and `μ` decides the QUBO-vs-classical comparison, and it decides
+   it by more than the methods differ.** At `λ=0, μ=1`, `qubo_tabu` beats group-quota
+   MMR on **both** NDCG (0.887 ± 0.007 vs 0.851 ± 0.020) and exposure parity
+   (0.200 ± 0.002 vs 0.258 ± 0.003), with non-overlapping ranges across 5 seeds on both
+   axes. At `λ=4, μ=0` — the same solver, the same data — it loses on everything. An
+   earlier version of this README reported only the second configuration and concluded
+   the classical baseline wins. That conclusion was an artifact of comparing a QUBO with
+   its fairness term switched off against a baseline with quotas built in.
+3. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
+   wins intra-list similarity outright. The win in (2) is real but narrow, and it
+   belongs to `qubo_tabu` specifically: `qubo_feasible` at the same operating point
+   scores *below* the baseline, despite being given ~2.4× the wall-clock.
 
-The second is the bottom line; the first is why the second is worth trusting. Detail
-below, numbers in [Results](#results).
+(1) is why (2) is worth trusting: without the barrier fix the solver never optimises
+well enough for the operating point to matter. Numbers in [Results](#results).
 
 ### 1. The penalty encoding breaks the sampler
 
@@ -87,23 +99,88 @@ whether the sampler optimised anything at all. A near-random feasible list score
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
 
+### 2. The operating point decides the comparison
+
+The headline benchmark below runs at `λ=4, μ=0`, and at that setting every QUBO variant
+loses to group-quota MMR on essentially everything. It is tempting to stop there and
+report that the classical baseline wins — an earlier version of this README did exactly
+that.
+
+It is not a fair comparison. `μ=0` switches the fairness term **off**, so it pits a QUBO
+optimising relevance-and-diversity against a baseline with group quotas hard-coded, and
+then scores both on group exposure parity. `λ=4` came from `loader.suggest_lam`, a
+scale-matching heuristic with no claim to being a good operating point.
+
+Re-run at `λ=0, μ=1` — the region the sweep pointed at — over 5 seeds, 60 users:
+
+| method | NDCG@10 | exposure parity ↓ | ILS ↓ | secs ↓ |
+|---|---|---|---|---|
+| quota_mmr | 0.8505 ± 0.0203 | 0.2576 ± 0.0034 | **0.0094 ± 0.0008** | **0.16 ± 0.00** |
+| **qubo_tabu** | **0.8873 ± 0.0067** | **0.1999 ± 0.0024** | 0.0177 ± 0.0014 | 16.05 ± 0.05 |
+| qubo_feasible | 0.8319 ± 0.0039 | **0.1999 ± 0.0024** | 0.0151 ± 0.0015 | 38.91 ± 3.63 |
+
+`qubo_tabu`'s NDCG range `[0.876, 0.893]` and `quota_mmr`'s `[0.814, 0.863]` do not
+overlap; neither do the parity ranges, `[0.197, 0.202]` against `[0.254, 0.262]`. So on
+the two axes the task is actually about — accuracy and group exposure — the QUBO wins,
+and the win survives resampling the users five times.
+
+Three things stop this being a rescue of the method:
+
+- **`quota_mmr` still wins intra-list similarity outright**, by a non-overlapping margin.
+  Whether that matters depends on whether you care about redundancy within one list or
+  exposure across groups; they are different goals and the two methods split them.
+- **The cost ratio is unchanged**: 16.1 seconds against 0.16, a factor of ~100. Nothing
+  here argues QUBO reranking is *practical* at this scale, only that it is not beaten on
+  quality.
+- **The win is `qubo_tabu`'s, not the QUBO's.** `qubo_feasible` scores 0.832 at the same
+  operating point — below the baseline — while being given ~2.4× the wall-clock. A
+  formulation-level claim would need both solvers to show it, and only one does.
+- **`qubo_tabu` is the solver whose result is least portable.** It stops on a wall-clock
+  timeout, so the margin above is partly a property of this CPU; see
+  [the note on tabu's stopping criterion](#evaluation-choices-that-change-the-numbers).
+
+**The methodological caveat, which is the real limitation.** `λ` and `μ` were chosen by
+looking at a 40-user sweep and then validated on 5 resamples of 60 users from the same
+dataset. The resamples are independent draws, so this is not the same as reporting the
+best sweep cell — but selection and evaluation still share a dataset. A clean protocol
+splits users into disjoint selection and evaluation sets and tunes only on the first.
+Until that is done, read this as *the QUBO has an operating point that beats the
+baseline on two axes*, not as *the QUBO beats the baseline*. Doing it properly is the
+first item in Phase 2, and it matters more than another dataset would.
+
 ## Results
 
 ### Synthetic benchmark (n=60, k=10, 25 users)
 
-| method | NDCG@10 | cat. coverage | exposure parity ↓ | intra-list sim ↓ | Gini ↓ | secs | kWh |
-|---|---|---|---|---|---|---|---|
-| greedy_topk | **1.0000** | 0.5333 | 1.0773 | 0.3336 | 0.6472 | **0.003** | 2.1e-07 |
-| mmr | 0.9502 | **1.0000** | 0.5333 | 0.1952 | 0.3516 | 0.026 | 2.3e-09 |
-| quota_mmr | 0.9072 | **1.0000** | **0.2667** | 0.1524 | 0.2872 | 0.028 | 2.1e-09 |
-| qubo_sa | 0.7448 | 0.9933 | 0.2960 | 0.1508 | 0.2887 | 8.31 | 2.8e-05 |
-| qubo_tabu | 0.8510 | **1.0000** | **0.2667** | **0.1312** | 0.2984 | 5.61 | 1.8e-05 |
-| qubo_feasible | 0.8585 | **1.0000** | **0.2667** | 0.1331 | **0.2696** | 4.23 | 1.4e-05 |
+| method | NDCG@10 | cat. cov. | parity ↓ | ILS ↓ | cat. coverage | Gini ↓ | secs ↓ | kWh ↓ |
+|---|---|---|---|---|---|---|---|---|
+| greedy_topk | **1.0000** | 0.533 | 1.0773 | 0.3336 | 0.600 | 0.6472 | **0.00** | 1.7e-07 |
+| mmr | 0.9502 | **1.000** | 0.5333 | 0.1952 | **1.000** | 0.3516 | 0.02 | **2.0e-09** |
+| quota_mmr | 0.9072 | **1.000** | **0.2667** | 0.1524 | **1.000** | 0.2872 | 0.02 | **2.0e-09** |
+| qubo_sa | 0.7448 | 0.993 | 0.2960 | 0.1508 | 0.967 | 0.2887 | 7.44 | 2.4e-05 |
+| qubo_tabu | 0.8510 | **1.000** | **0.2667** | **0.1312** | 0.967 | 0.2984 | 5.54 | 1.8e-05 |
+| qubo_feasible | 0.8585 | **1.000** | **0.2667** | 0.1331 | 0.983 | **0.2696** | 3.96 | 1.3e-05 |
 
-`qubo_feasible` trades 0.049 NDCG against `quota_mmr` for a better Gini (0.2696 vs 0.2872)
-and lower intra-list similarity (0.1331 vs 0.1524) — a real Pareto trade, but one costing
-**150× the wall-clock**. It does at least dominate `qubo_sa` outright: +0.11 NDCG, better
-diversity, better Gini, and roughly half the time.
+Over 5 seeds (`results/synthetic_repeats.csv`):
+
+| method | NDCG@10 | parity ↓ | Gini ↓ | secs ↓ |
+|---|---|---|---|---|
+| greedy_topk | 1.0000 ± 0.0000 | 1.0768 ± 0.0158 | 0.6423 ± 0.0050 | 0.00 ± 0.00 |
+| mmr | 0.9499 ± 0.0018 | 0.5301 ± 0.0072 | 0.3814 ± 0.0175 | 0.03 ± 0.00 |
+| quota_mmr | 0.9110 ± 0.0034 | **0.2667 ± 0.0000** | 0.2877 ± 0.0107 | 0.03 ± 0.01 |
+| qubo_sa | 0.7404 ± 0.0105 | 0.3045 ± 0.0208 | **0.2686 ± 0.0243** | 7.29 ± 0.03 |
+| qubo_tabu | 0.8652 ± 0.0088 | **0.2667 ± 0.0000** | 0.2877 ± 0.0218 | 5.53 ± 0.00 |
+| qubo_feasible | **0.8666 ± 0.0049** | **0.2667 ± 0.0000** | 0.2803 ± 0.0233 | 3.87 ± 0.05 |
+
+`qubo_feasible` trades 0.044 NDCG against `quota_mmr` for a better Gini (0.2803 vs
+0.2877) and lower intra-list similarity — a real Pareto trade, but one costing **~130×
+the wall-clock**. It does dominate `qubo_sa` outright: +0.13 NDCG, better parity, and
+roughly half the time.
+
+The two fixed solvers are indistinguishable here — 0.8666 ± 0.0049 against
+0.8652 ± 0.0088 — which is the point of running seeds at all. On a single seed
+`qubo_feasible` looks 0.008 better and it would have been easy to write that up as an
+ordering.
 
 Two things the λ/μ sweep shows (`results/synthetic_sweep.csv`):
 
@@ -126,20 +203,41 @@ tiers, which are *not* aligned with the similarity structure, and μ traces a re
 Recall's ceiling is **0.49** — the fraction of users whose held-out item was in the
 top-200 candidate set at all. Read `recall@10` against that, not against 1.0.
 
-| method | NDCG@10 | recall@10 | cat. cov. | parity ↓ | ILS ↓ | cat. coverage | Gini ↓ | AI-F ↓ | IBO | secs | kWh |
+| method | NDCG@10 | recall@10 | cat. cov. | parity ↓ | ILS ↓ | cat. coverage | Gini ↓ | AI-F ↓ | IBO | secs ↓ | kWh ↓ |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| greedy_topk | **1.0000** | **0.250** | 0.610 | 0.9983 | 0.0524 | 0.326 | 0.8776 | 2.4e-04 | 0.366 | **0.03** | **1.9e-07** |
-| mmr | 0.9159 | 0.245 | 0.733 | 0.8225 | 0.0189 | 0.441 | 0.7924 | 1.3e-04 | **0.380** | 0.71 | 2.3e-06 |
-| quota_mmr | 0.8369 | 0.225 | **1.000** | **0.2607** | 0.0095 | 0.510 | 0.7342 | 9.9e-05 | 0.324 | 0.53 | 1.7e-06 |
-| qubo_sa | 0.4370 | 0.170 | 0.910 | 0.5205 | **0.0020** | **0.667** | **0.5824** | **3.7e-05** | 0.197 | 377.3 | 1.2e-03 |
-| qubo_tabu | 0.6646 | 0.200 | 0.883 | 0.5648 | 0.0014 | 0.539 | 0.7166 | 6.3e-05 | 0.268 | 56.9 | 1.8e-04 |
-| qubo_feasible | 0.6593 | 0.205 | 0.888 | 0.5283 | 0.0014 | 0.560 | 0.6975 | 5.6e-05 | 0.282 | 117.8 | 3.8e-04 |
+| greedy_topk | **1.0000** | **0.250** | 0.610 | 0.9983 | 0.0524 | 0.326 | 0.8776 | 2.4e-04 | 0.366 | **0.00** | **1.8e-07** |
+| mmr | 0.9159 | 0.245 | 0.733 | 0.8225 | 0.0189 | 0.441 | 0.7924 | 1.3e-04 | **0.380** | 0.67 | 2.1e-06 |
+| quota_mmr | 0.8369 | 0.225 | **1.000** | **0.2607** | 0.0095 | 0.510 | 0.7342 | 9.9e-05 | 0.324 | 0.51 | 1.6e-06 |
+| qubo_sa | 0.4370 | 0.170 | 0.910 | 0.5205 | 0.0020 | **0.667** | **0.5824** | **3.7e-05** | 0.197 | 360.24 | 1.2e-03 |
+| qubo_tabu | 0.6648 | 0.200 | 0.882 | 0.5643 | **0.0014** | 0.540 | 0.7160 | 6.3e-05 | 0.268 | 56.49 | 1.8e-04 |
+| qubo_feasible | 0.6593 | 0.205 | 0.887 | 0.5283 | **0.0014** | 0.560 | 0.6975 | 5.6e-05 | 0.282 | 108.42 | 3.5e-04 |
 
-**The honest bottom line: on real data the classical baseline wins.** `quota_mmr` beats
-every QUBO variant on NDCG (0.837 vs 0.659), recall (0.225 vs 0.205), group exposure
-parity (0.261 vs 0.528) and IBO (0.324 vs 0.282) — in **0.53 seconds against 118**, using
-**1/220th the energy**. The fixed solvers rescue the QUBO from `qubo_sa`'s 0.437 NDCG, but
-they rescue it into second place.
+Over 5 seeds at 60 users (`results/amazon_lb_repeats.csv`):
+
+| method | NDCG@10 | recall@10 | parity ↓ | Gini ↓ | secs ↓ |
+|---|---|---|---|---|---|
+| greedy_topk | 1.0000 ± 0.0000 | 0.317 ± 0.103 | 0.9902 ± 0.0698 | 0.9201 ± 0.0156 | 0.00 ± 0.00 |
+| mmr | 0.9241 ± 0.0137 | 0.307 ± 0.090 | 0.8189 ± 0.0408 | 0.8759 ± 0.0155 | 0.20 ± 0.01 |
+| quota_mmr | 0.8505 ± 0.0203 | 0.283 ± 0.075 | **0.2576 ± 0.0034** | 0.8436 ± 0.0183 | 0.16 ± 0.00 |
+| qubo_sa | 0.4749 ± 0.0296 | 0.220 ± 0.089 | 0.5162 ± 0.0300 | **0.7693 ± 0.0306** | 107.67 ± 0.27 |
+| qubo_tabu | 0.6915 ± 0.0384 | 0.260 ± 0.085 | 0.5322 ± 0.0170 | 0.8284 ± 0.0272 | 16.88 ± 0.06 |
+| qubo_feasible | 0.6881 ± 0.0400 | 0.260 ± 0.085 | 0.5499 ± 0.0282 | 0.8262 ± 0.0260 | 33.34 ± 1.47 |
+
+**At this operating point the classical baseline wins,** and by a wide margin:
+`quota_mmr` beats every QUBO variant on NDCG (0.851 vs 0.692), recall, exposure parity
+(0.258 vs 0.532) and IBO — in **0.16 seconds against 17**. The fixed solvers rescue the
+QUBO from `qubo_sa`'s 0.475 NDCG, but at `λ=4, μ=0` they rescue it into second place.
+
+**This is the wrong operating point, and it is the one this config picks.** `μ=0` means
+the fairness term is off, so the QUBO is being scored on group exposure parity while
+having been given no reason to optimise it. [Section 2](#2-the-operating-point-decides-the-comparison)
+re-runs the comparison at `λ=0, μ=1`, where `qubo_tabu` beats `quota_mmr` on NDCG and
+parity simultaneously with non-overlapping ranges. Both tables are real; the difference
+between them is a configuration choice, and it is larger than the difference between the
+methods.
+
+The table is kept at `λ=4, μ=0` rather than quietly re-run at the flattering setting,
+because the gap between the two is the most useful thing on this page.
 
 Where the QUBO does win — Gini, catalogue coverage, intra-list similarity, AI-F — deserves
 scepticism rather than celebration. Every one of those is improved by *spreading selections
@@ -164,8 +262,9 @@ that MMR cannot express but a QUBO can. On this benchmark, at this size, it does
 
 ### What the λ/μ sweep shows on real data
 
-Grid: λ ∈ {0, 4, 16} × μ ∈ {0, 1, 4, 16}, 40 users, `qubo_feasible`
-(`results/amazon_lb_sweep.csv`).
+Grid: λ ∈ {0, 1, 4, 16} × μ ∈ {0, 1, 4}, 40 users, all three QUBO solvers
+(`results/amazon_lb_sweep.csv`). Baselines for the figure are re-run on the same 40
+users and written to `results/amazon_lb_sweep_baselines.csv`.
 
 **The solver is verifiably optimising.** At λ=0, μ=0 the objective is pure relevance, so
 the optimum is exactly greedy top-k — and it returns NDCG **1.0000** on a 200-variable
@@ -207,10 +306,19 @@ second.
 ![amazon Pareto](results/amazon_lb_sweep_pareto.png)
 
 Each panel plots NDCG against one cost axis; the classical baselines are fixed reference
-points. The question is not whether the QUBO curve *moves* — any reranker moves — but
-whether any point on it sits above and to the left of `quota_mmr` (green star). On
-intra-list similarity and Gini it does. On group exposure parity, the axis the fairness
-term optimises directly, it does not.
+points, computed on the same user sample as the sweep. The question is not whether the
+QUBO curve *moves* — any reranker moves — but whether any point on it sits above and to
+the left of `quota_mmr` (green star), i.e. more accurate *and* cheaper on that axis.
+
+On group exposure parity it does: `qubo_tabu` at `λ=0, μ=1` reaches NDCG 0.899 at parity
+0.199, against `quota_mmr`'s 0.868 at 0.253. That single point is what prompted the
+5-seed re-test in [Section 2](#2-the-operating-point-decides-the-comparison), and it is
+the whole reason the headline claim changed. It is also a good argument for drawing the
+figure before writing the conclusion: the same data, plotted against matched baselines,
+had been sitting in an earlier sweep whose baselines came from a different user sample
+and so could not be compared to it at all.
+
+On Gini it does not, at any grid point — and Gini is the axis nothing here optimises.
 
 ## Reproducing
 
@@ -298,6 +406,43 @@ got right before the numbers meant anything:
   time for the baselines. Solving and scoring are now separate passes.
 - Runs must not be executed concurrently; CPU contention contaminates both timing and
   energy.
+- **The machine must stay on mains power.** Midway through one session this laptop was
+  unplugged. On battery the Balanced power plan drops an i5-8350U from ~3.6 GHz turbo to
+  a pinned 1.297 GHz, and every measured time rose ~2.8× — `qubo_sa` on the synthetic
+  benchmark read 7.3 s before and 20.3 s after, reproducibly, in both regimes. Every
+  quality metric was byte-identical across the two: same NDCG to six decimals, same
+  Gini. So nothing looked wrong. This is the same failure shape as the penalty barrier,
+  and it is worth stating plainly in a repo that reports energy: **the energy column
+  moved by a factor of three because a cable came out, and only the energy column
+  moved.** Runs that report `seconds` or `kWh` are now taken on AC, and results measured
+  in different power states are never put in the same table.
+
+**One solver's `seconds` is not a measurement.** `dwave.samplers.TabuSampler.sample`
+defaults to `timeout=20` — 20 ms of *wall-clock* per read, not a fixed amount of search.
+`qubo_tabu` therefore runs for a configured budget and stops, which has two consequences
+the other solvers do not share: its wall-clock is roughly constant regardless of how fast
+the machine is (it moved only 1.09× across the power-state change above, against 2.8×
+for everything else), and its **solution quality is hardware-dependent**, because a
+slower CPU completes less search inside the same 20 ms.
+
+The unplugged laptop turned that inference into a measurement. The `λ=0, μ=1` repeat
+study was run twice by accident — once on battery, once on mains — with identical seeds,
+identical data and identical code:
+
+| solver | NDCG on battery (1.3 GHz) | NDCG on mains (3.6 GHz turbo) |
+|---|---|---|
+| `quota_mmr` | 0.8505 ± 0.0203 | 0.8505 ± 0.0203 |
+| `qubo_feasible` | 0.8319 ± 0.0039 | 0.8319 ± 0.0039 |
+| `qubo_tabu` | 0.8801 ± 0.0084 | **0.8873 ± 0.0067** |
+
+The two fixed-work methods are identical to four decimal places. The time-boxed one got
+**better on a faster CPU**. `qubo_sa` and `qubo_feasible` are specified in sweeps and do
+a fixed amount of work; comparing tabu to them on the time axis compares a stopwatch to
+a workload, and tabu's quality numbers are only reproducible on comparable hardware.
+Pinning `timeout` and reporting it — or switching to a work-based stopping criterion —
+is a prerequisite for any cross-machine claim about this solver, and the headline result
+in [Section 2](#2-the-operating-point-decides-the-comparison) is `qubo_tabu`'s, so this
+qualifies it directly.
 
 Even then: codecarbon estimates from CPU TDP and utilisation, it is not a power meter,
 and below ~0.1 s of work its readings are dominated by noise — the sub-second baselines
@@ -334,14 +479,30 @@ configs/            YAML experiment configs
 | Phase | Content | Status |
 |---|---|---|
 | **1** | CF baseline, core QUBO, fairness term, solvers, one real dataset | done |
-| **2** | 3 datasets, repeated seeds, confidence intervals, full Pareto analysis | next |
+| **2** | Repeated seeds and spreads · disjoint tuning split · 3 datasets | in progress |
 | **3** | Decomposition for large catalogues; Simulated Bifurcation; D-Wave Leap QPU | |
 | **4** | Packaging, docs, PyPI release | |
 | **5** | Technical report / preprint | |
 
-Phase 2's first job is confidence intervals. Every number above is a single seed, and the
-gaps between the QUBO solvers are small enough that some of them will not survive repeated
-runs. The `neal` result will; a ~2× energy gap is not noise.
+**Done in Phase 2:** every headline comparison is now a mean ± std over 5 seeds, with
+the benchmark rebuilt each time so the user sample varies too (`--repeats`).
+
+That immediately retired one claim. An earlier draft of this file discussed `qubo_tabu`
+and `qubo_feasible` as if they were distinguishable at `λ=4, μ=0`; across 5 seeds they
+sit at 0.6915 ± 0.0384 and 0.6881 ± 0.0400, a gap roughly a tenth of the noise. It also
+predicted that "some of the gaps will not survive repeated runs" — that was the one.
+The `qubo_sa` result survived comfortably, as predicted.
+
+**Next in Phase 2, in priority order:**
+
+1. **A disjoint tuning split.** `λ` and `μ` are currently selected by inspecting a sweep
+   over the same dataset they are then evaluated on. This is the weakest link in the
+   headline result and it is a protocol change, not a compute problem.
+2. **A second and third dataset.** One dataset with one similarity structure cannot tell
+   you whether the operating-point effect generalises.
+3. **Per-user paired tests.** All five solvers see identical candidate sets, so a paired
+   comparison over users is available and is far more powerful than comparing means with
+   n=5.
 
 ## Related work
 
