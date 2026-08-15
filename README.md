@@ -296,12 +296,12 @@ top-200 candidate set at all. Read `recall@10` against that, not against 1.0.
 
 | method | NDCG@10 | recall@10 | cat. cov. | parity ↓ | ILS ↓ | cat. coverage | Gini ↓ | AI-F ↓ | IBO | secs ↓ | kWh ↓ |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| greedy_topk | **1.0000** | **0.250** | 0.610 | 0.9983 | 0.0524 | 0.326 | 0.8776 | 2.4e-04 | 0.366 | **0.00** | **1.8e-07** |
-| mmr | 0.9159 | 0.245 | 0.733 | 0.8225 | 0.0189 | 0.441 | 0.7924 | 1.3e-04 | **0.380** | 0.67 | 2.1e-06 |
-| quota_mmr | 0.8369 | 0.225 | **1.000** | **0.2607** | 0.0095 | 0.510 | 0.7342 | 9.9e-05 | 0.324 | 0.51 | 1.6e-06 |
-| qubo_sa | 0.4370 | 0.170 | 0.910 | 0.5205 | 0.0020 | **0.667** | **0.5824** | **3.7e-05** | 0.197 | 360.24 | 1.2e-03 |
-| qubo_tabu | 0.6648 | 0.200 | 0.882 | 0.5643 | **0.0014** | 0.540 | 0.7160 | 6.3e-05 | 0.268 | 56.49 | 1.8e-04 |
-| qubo_feasible | 0.6593 | 0.205 | 0.887 | 0.5283 | **0.0014** | 0.560 | 0.6975 | 5.6e-05 | 0.282 | 108.42 | 3.5e-04 |
+| greedy_topk | **1.0000** | **0.250** | 0.610 | 0.9983 | 0.0523 | 0.326 | 0.8776 | 2.4e-04 | 0.371 | **0.00** | **1.8e-07** |
+| mmr | 0.9159 | 0.245 | 0.735 | 0.8233 | 0.0189 | 0.438 | 0.7938 | 1.3e-04 | **0.386** | 0.71 | 2.3e-06 |
+| quota_mmr | 0.8369 | 0.225 | **1.000** | **0.2600** | 0.0095 | 0.511 | 0.7333 | 9.9e-05 | 0.329 | 0.71 | 2.4e-06 |
+| qubo_sa | 0.4339 | 0.155 | 0.898 | 0.5527 | 0.0019 | **0.685** | **0.5652** | **3.6e-05** | 0.157 | 368.69 | 1.2e-03 |
+| qubo_tabu | 0.6653 | 0.210 | 0.882 | 0.5637 | **0.0014** | 0.550 | 0.7074 | 6.2e-05 | 0.300 | 57.67 | 1.8e-04 |
+| qubo_feasible | 0.6580 | 0.200 | 0.882 | 0.5443 | **0.0014** | 0.562 | 0.6999 | 5.8e-05 | 0.271 | 112.26 | 3.6e-04 |
 
 Over 5 seeds at 60 users (`results/amazon_lb_repeats.csv`):
 
@@ -493,9 +493,9 @@ NDCG@10 delivered at that tightest budget:
 
 | method | Gift Cards | Luxury Beauty | Software |
 |---|---|---|---|
-| quota_mmr | 0.5540 | 0.9033 | 0.9031 |
-| **qubo_tabu** | **0.7589** | 0.9043 | 0.9023 |
-| qubo_feasible | 0.7253 | 0.8501 | 0.8329 |
+| quota_mmr | 0.5540 | 0.9034 | 0.9033 |
+| **qubo_tabu** | **0.7589** | 0.9044 | 0.9026 |
+| qubo_feasible | 0.7253 | 0.8475 | 0.8333 |
 
 ![cross-dataset fairness budget curves](results/datasets_budget.png)
 
@@ -534,18 +534,18 @@ Wilcoxon signed-rank, two-sided, Holm-corrected across all 20 comparisons in the
 
 | metric | method | median diff | 95% CI | better/worse/tied | p (Holm) |
 |---|---|---|---|---|---|
-| **exposure parity ↓** | qubo_tabu | **−0.1000** | [−0.1000, −0.1000] | 115 / **0** / 85 | 3e-25 |
-| | qubo_feasible | **−0.1000** | [−0.1000, −0.1000] | 115 / **0** / 85 | 3e-25 |
-| **NDCG@10 ↑** | qubo_tabu | **+0.0012** | [+0.0012, +0.0043] | 127 / 63 / 10 | 2e-07 |
-| | qubo_feasible | −0.0426 | [−0.0514, −0.0282] | 54 / 146 / 0 | 2e-04 |
-| | qubo_sa | −0.1362 | [−0.1542, −0.1084] | 33 / 167 / 0 | 8e-22 |
+| **exposure parity ↓** | qubo_tabu | **−0.1000** | [−0.1000, −0.0500] | 114 / **0** / 86 | 2.8e-25 |
+| | qubo_feasible | **−0.1000** | [−0.1000, −0.0500] | 114 / **0** / 86 | 2.8e-25 |
+| **NDCG@10 ↑** | qubo_tabu | **+0.0012** | [+0.0012, +0.0043] | 126 / 64 / 10 | 3.3e-07 |
+| | qubo_feasible | −0.0409 | [−0.0522, −0.0251] | 51 / 149 / 0 | 1.6e-04 |
+| | qubo_sa | −0.1371 | [−0.1528, −0.1155] | 27 / 173 / 0 | 8.2e-25 |
 | **recall@10 ↑** | qubo_tabu | 0.0000 | [0.0000, 0.0000] | 5 / 1 / 194 | 0.57 |
-| **intra-list sim ↓** | qubo_tabu | +0.0022 | [+0.0022, +0.0040] | 25 / 166 / 9 | 2e-27 |
+| **intra-list sim ↓** | qubo_tabu | +0.0022 | [+0.0022, +0.0036] | 26 / 165 / 9 | 2.3e-27 |
 
 **Significant and negligible are not opposites, and the NDCG row is why this matters.**
 The seed-level comparison called `qubo_tabu` vs `quota_mmr` a tie — 0.9043 ± 0.0109
 against 0.9033 ± 0.0115. The paired test, with far more power, finds the difference is
-**real**: p ≈ 2×10⁻⁷, better on 127 users against 63. And its median size is
+**real**: p ≈ 3×10⁻⁷, better on 126 users against 64. And its median size is
 **0.0012 NDCG**, with the interval topping out at 0.0043. Both readings are correct, and
 reporting either one alone would mislead. A table of p-values would have called this a
 win; a table of means called it a tie; it is a certain difference of almost no size.
@@ -560,10 +560,10 @@ there is at most one relevant item per user and the candidate-set ceiling is 0.4
 most users score identically under every reranker. Reporting a recall difference on this
 benchmark would be reporting noise.
 
-Two results the pairing strengthens rather than changes: `qubo_sa` sits at −0.136 NDCG
-against the baseline (p ≈ 8×10⁻²²), so the penalty-barrier finding now rests on 200
+Two results the pairing strengthens rather than changes: `qubo_sa` sits at −0.137 NDCG
+against the baseline (p ≈ 8×10⁻²⁵), so the penalty-barrier finding now rests on 200
 paired observations rather than seed means; and `qubo_feasible` is **significantly worse
-than the classical baseline** at −0.043, which settles that the QUBO's advantage here
+than the classical baseline** at −0.041, which settles that the QUBO's advantage here
 belongs to `qubo_tabu` specifically and not to the formulation.
 
 > Read the interval, not the star. With 200 users a p-value of 10⁻²⁵ reports

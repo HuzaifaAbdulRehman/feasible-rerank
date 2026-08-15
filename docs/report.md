@@ -186,8 +186,8 @@ NDCG@10 at that reach:
 
 | method | Gift Cards | Luxury Beauty | Software |
 |---|---|---|---|
-| quota-MMR | 0.5540 | 0.9033 | 0.9031 |
-| QUBO + tabu | **0.7589** | 0.9043 | 0.9023 |
+| quota-MMR | 0.5540 | 0.9034 | 0.9033 |
+| QUBO + tabu | **0.7589** | 0.9044 | 0.9026 |
 
 The result holds on all three catalogues, which span 147–1,366 items and 0.0067–0.0442
 density. It is strongest on the smallest and densest (Gift Cards), where the QUBO takes
@@ -207,10 +207,10 @@ quota-MMR:
 
 | metric | median diff | 95% CI | better/worse/tied | p (Holm) |
 |---|---|---|---|---|
-| exposure parity ↓ | **−0.1000** | [−0.1000, −0.1000] | 115 / **0** / 85 | 3×10⁻²⁵ |
-| NDCG@10 ↑ | +0.0012 | [+0.0012, +0.0043] | 127 / 63 / 10 | 2×10⁻⁷ |
+| exposure parity ↓ | **−0.1000** | [−0.1000, −0.0500] | 114 / **0** / 86 | 2.8×10⁻²⁵ |
+| NDCG@10 ↑ | +0.0012 | [+0.0012, +0.0043] | 126 / 64 / 10 | 3.3×10⁻⁷ |
 | recall@10 ↑ | 0.0000 | [0.0000, 0.0000] | 5 / 1 / 194 | 0.57 |
-| intra-list sim ↓ | +0.0022 | [+0.0022, +0.0040] | 25 / 166 / 9 | 2×10⁻²⁷ |
+| intra-list sim ↓ | +0.0022 | [+0.0022, +0.0036] | 26 / 165 / 9 | 2.3×10⁻²⁷ |
 
 The NDCG row is the useful one. A seed-level comparison called this a tie; the paired
 test finds the difference is *certain* and that its median size is **0.0012**. Both
