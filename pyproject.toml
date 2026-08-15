@@ -1,7 +1,63 @@
-# Test configuration only -- this project is run from a checkout, not installed, so
-# there is deliberately no [build-system] or [project] table here yet. Packaging is
-# Phase 4.
-#
+# Packaging here is deliberately minimal. This is a research codebase run from a
+# checkout, not a library anyone imports, so it carries metadata and supports an
+# editable install -- and stops there. No PyPI release: claiming a name nobody will
+# `pip install` costs something and buys nothing.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qubo-rerank"
+version = "0.2.0"
+description = "Fair, energy-aware recommendation list selection via QUBO"
+readme = "README.md"
+license = { file = "LICENSE" }
+# 3.10 is the floor the code actually needs (zip(strict=) is the newest thing
+# used) and is what it was developed against. Claiming 3.11 would have blocked
+# installs in the environment the whole suite passes in.
+requires-python = ">=3.10"
+authors = [{ name = "Huzaifa Abdul Rehman" }]
+keywords = [
+    "recommender-systems",
+    "quantum-annealing",
+    "QUBO",
+    "fairness",
+    "green-computing",
+]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "dimod>=0.12",
+    "dwave-neal>=0.6",
+    "dwave-samplers>=1.3",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "codecarbon>=2.3",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "coverage>=7.0", "ruff>=0.6"]
+
+[tool.setuptools]
+# experiments/ and benchmarks/ are scripts and data loaders driven from the command
+# line, not importable library surface. Only the library is packaged.
+packages = [
+    "qubo_rerank",
+    "qubo_rerank.formulations",
+    "qubo_rerank.solvers",
+    "qubo_rerank.metrics",
+]
+
 # `pythonpath = ["."]` is load-bearing. Without it `from qubo_rerank import ...`
 # resolves only under `python -m pytest`, which prepends the working directory to
 # sys.path; a bare `pytest tests/` -- which is what CI and most contributors run --
@@ -16,7 +72,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 
 [tool.ruff.lint]
 # E/F are the baseline, I keeps imports ordered, UP catches syntax kept alive by habit,

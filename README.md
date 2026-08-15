@@ -1,7 +1,7 @@
 # qubo-rerank
 
 [![tests](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml/badge.svg)](https://github.com/OWNER/qubo-rerank/actions/workflows/tests.yml)
-[![python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **Fair and energy-aware recommendation list selection via QUBO.**
@@ -12,7 +12,7 @@ instead selects the *entire list at once* as a Quadratic Unconstrained Binary Op
 (QUBO) problem, jointly balancing relevance, diversity, and exposure fairness — and reports
 the energy cost of doing so.
 
-> Status: **Phase 1 complete, Phase 2 under way** — end-to-end on real data, every
+> Status: **Phases 1-2 complete, Phase 3 under way** — end-to-end on real data, every
 > headline comparison averaged over 5 seeds, and a negative result about the standard
 > QUBO recipe that turned out to be the most interesting thing here.
 
@@ -53,7 +53,10 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
    users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
    **0.0012 NDCG**. Certain, and negligible.
-4. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
+4. **That feasibility result holds on 3 of 3 catalogues** differing by an order of
+   magnitude in size and 6.6× in density. It is strongest on the smallest and densest,
+   where the QUBO takes both a tighter budget and +0.20 NDCG.
+5. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
    wins intra-list similarity outright.
 
 (1) is why (3) is worth trusting: without the barrier fix the solver never optimises
@@ -100,6 +103,9 @@ Two fixes, both in the repo, both beating `neal` by ~2× on its own objective:
 | `qubo_tabu` | same BQM, same single-flip move set, but with **search memory** | yes |
 | `qubo_feasible` | anneal over **k-subsets** via swap moves; the barrier never exists | no |
 
+And one that does **not** fix it, which turns out to be the more informative result —
+see [Continuous dynamics fail too](#continuous-dynamics-fail-too).
+
 That `qubo_tabu` also works is what rules out the *formulation* as the culprit: a generic
 single-flip sampler can solve this BQM given a strategy that escapes basins deliberately
 rather than thermally. The problem is the interaction between penalty encoding and
@@ -113,6 +119,68 @@ caution against reporting "QUBO reranking achieves good diversity" without check
 whether the sampler optimised anything at all. A near-random feasible list scores *well*
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
+
+### Continuous dynamics fail too
+
+The barrier argument above is about **move sets**: two valid k-item lists are never
+adjacent under bit flips, so a single-flip sampler has to climb the full penalty to get
+between them. That argument says nothing about a method with no move set at all.
+
+Simulated Bifurcation (Goto et al., *Science Advances* 2019) is exactly that method. It
+gives each variable a position and a momentum, integrates a Hamiltonian system while a
+control parameter is ramped until each variable bifurcates toward one of two attractors,
+and reads the spins off the signs at the end. In between, the state is a point in
+continuous space that is not any particular bit vector — it travels through the interior
+of the hypercube rather than along its edges. If the penalty encoding were merely
+hostile to *discrete local search*, this should sail past it.
+
+**It does worse than anything else here. On the barrier instance it returns the empty
+set** — at 600 and at 2000 steps, in both the ballistic and discrete variants.
+
+The mechanism is different from the barrier, and the conclusion is the same. Penalty-
+encoded cardinality couples every pair of items positively, so converting to Ising form
+leaves a large *uniform* field: mean **4.7413** with a spread of **0.0024**. The signal
+that distinguishes one item from another is 5×10⁻⁴ of the common mode. Every variable
+feels essentially the same drive, so they all bifurcate together, and the answer is
+"select nothing". Sweeping the penalty strength shows the dependence directly:
+
+| penalty strength | field spread ÷ mean | items selected (target 10) |
+|---|---|---|
+| 277.8 (the value that enforces the constraint) | 5.0×10⁻⁴ | **0** |
+| 27.8 | 5.0×10⁻³ | **0** |
+| 8.3 | 1.6×10⁻² | **0** |
+| 2.8 | 4.5×10⁻² | 9 |
+| 0.8 | 1.2×10⁻¹ | 2 |
+
+Simulated Bifurcation only sees the objective once the penalty falls roughly 100×
+*below* the strength needed to enforce the constraint — which is `neal`'s dilemma
+restated in continuous form.
+
+**This sharpens the repo's central claim.** It is not that thermal search is the
+problem:
+
+| solver | paradigm | outcome |
+|---|---|---|
+| `qubo_sa` | discrete, thermal | fails |
+| `qubo_sb` | **continuous dynamics** | **fails worse** |
+| `qubo_tabu` | discrete + explicit memory | works |
+| `qubo_feasible` | constraint-preserving moves | works |
+
+What rescues the formulation is not a better search. It is either **memory** or **never
+leaving the feasible set**. Two solvers from unrelated paradigms both fail when handed
+the penalty encoding unaided, which is a stronger argument for constraint-aware solvers
+than either failure alone.
+
+**A caution about this result, since it is a negative one.** A negative result from a
+broken implementation is easy to produce by accident, so `tests/test_bifurcation.py`
+establishes correctness before it establishes failure: the solver recovers the
+exhaustive optimum on 8 of 8 random dense QUBOs, and its QUBO→Ising conversion is checked
+numerically. That check earned its place — the conversion had a factor-of-two error when
+first written (`J/8` where `J/4` was needed), which is invisible in the output because
+the result is still a perfectly plausible Ising problem, just a different one. It is
+still possible that a specialist SB implementation with problem-specific tuning would do
+better; what is not in doubt is the mechanism, which is a property of the encoding rather
+than of any solver.
 
 ### 2. The operating point decides the comparison
 
@@ -393,6 +461,64 @@ it is marked infeasible on the seeds where tuning landed just above. A paired pe
 test would extract far more from the same runs than comparing means over three seeds,
 and is the next item in Phase 2.
 
+### Does it hold on more than one catalogue?
+
+The feasibility result is stated as a claim about *methods*. It could equally be a claim
+about Amazon Luxury Beauty's popularity structure, and one dataset cannot tell those
+apart. So the whole protocol was re-run, unchanged, on two more Amazon categories chosen
+to differ in the ways that should matter:
+
+| | Luxury Beauty | Software | Gift Cards |
+|---|---|---|---|
+| interactions (5-core) | 32,732 | 12,454 | 2,960 |
+| users / items | 3,589 / 1,366 | 1,779 / 729 | 456 / 147 |
+| density | 0.0067 | 0.0096 | **0.0442** |
+| candidate-set ceiling on recall | 0.49 | 0.28 | — |
+| candidates reranked | 200 | 200 | 100 |
+
+Identical budgets, grids and seeds throughout — nothing is tuned per catalogue.
+
+**Reach** — the tightest fairness budget each method meets *on every seed*. Lower is a
+stronger guarantee:
+
+| method | Gift Cards | Luxury Beauty | Software |
+|---|---|---|---|
+| greedy_topk | — | — | 1.00 |
+| mmr | 1.00 | 1.00 | 1.00 |
+| quota_mmr | 0.25 | 0.30 | 0.30 |
+| **qubo_tabu** | **0.20** | **0.22** | **0.20** |
+| **qubo_feasible** | **0.20** | **0.22** | **0.20** |
+
+NDCG@10 delivered at that tightest budget:
+
+| method | Gift Cards | Luxury Beauty | Software |
+|---|---|---|---|
+| quota_mmr | 0.5540 | 0.9033 | 0.9031 |
+| **qubo_tabu** | **0.7589** | 0.9043 | 0.9023 |
+| qubo_feasible | 0.7253 | 0.8501 | 0.8329 |
+
+![cross-dataset fairness budget curves](results/datasets_budget.png)
+
+**Holds on 3 of 3.** And Gift Cards is the interesting one — it was included precisely
+because it was the case most likely to break the result, being small and dense enough
+that a greedy heuristic has room to do well. Instead the QUBO wins *both* axes there:
+a tighter reach **and** +0.20 NDCG at it. That matches what the config predicted before
+the run: small `n` is exactly where exhaustive-ish search should pay off, which makes it
+a fair place to look for the method's best case rather than a hostile one.
+
+**Why quota-MMR stalls, mechanically.** Its reach is 0.30 on both 200-candidate
+datasets, and the arithmetic floor for k=10 over 4 groups is 0.20. That gap is not about
+data: quota-MMR fills group quotas greedily and cannot backtrack, so a slot spent early
+on a group that later proves cheap to fill is not recoverable. The QUBO chooses the
+whole allocation at once and reaches the floor. Gift Cards' smaller candidate set
+loosens the constraint enough for quota-MMR to reach 0.25, which is consistent with the
+same explanation.
+
+**This is the strongest claim in the repo**, and it is a claim about *when* to use the
+method rather than that the method is better: below a group-exposure requirement of
+roughly 0.25, the classical rerankers tested here cannot satisfy the constraint at any
+setting of their own hyperparameters, and the QUBO can.
+
 ### Paired per-user tests
 
 Comparing means over 3 seeds is a test with n=3. But every method sees the **identical
@@ -617,13 +743,16 @@ swapping the real thing back in is a loader change and nothing else.
 ```
 qubo_rerank/
 ├── formulations/   objective · cardinality · fairness · builder
-├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · feasible-set annealing
+├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap annealing · bifurcation
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
-experiments/        run_experiment · sweep · protocol · paired · plots · tables
-configs/            YAML experiment configs
-tests/              188 tests · 74% line coverage
+experiments/        run_experiment · sweep · protocol · paired · compare_datasets · plots
+configs/            YAML experiment configs (synthetic + 3 Amazon categories)
+tests/              223 tests · ~75% line coverage
 ```
+
+A written-up version of the findings, with method and limitations, is in
+[`docs/report.md`](docs/report.md).
 
 **If you are reading this to judge the work, three files carry it:**
 
@@ -632,14 +761,15 @@ tests/              188 tests · 74% line coverage
 | [`qubo_rerank/solvers/feasible.py`](qubo_rerank/solvers/feasible.py) | the constraint-preserving annealer, and the response to the penalty-barrier finding |
 | [`tests/test_solvers.py`](tests/test_solvers.py) | `TestPenaltyBarrier` — the four tests that hold the headline claim up |
 | [`benchmarks/loader.py`](benchmarks/loader.py) | the real-data pipeline; ItemKNN in ~40 lines of scipy rather than 2.5 GB of torch |
+| [`experiments/protocol.py`](experiments/protocol.py) | the tune-on-half / evaluate-on-the-other-half protocol the headline claim rests on |
 
 ## Roadmap
 
 | Phase | Content | Status |
 |---|---|---|
 | **1** | CF baseline, core QUBO, fairness term, solvers, one real dataset | done |
-| **2** | Repeated seeds and spreads · disjoint tuning split · 3 datasets | in progress |
-| **3** | Decomposition for large catalogues; Simulated Bifurcation; D-Wave Leap QPU | |
+| **2** | Repeated seeds · disjoint tuning split · paired tests · 3 datasets | done |
+| **3** | Sparse similarity · Simulated Bifurcation · D-Wave Leap QPU | partly |
 | **4** | Packaging, docs, PyPI release | |
 | **5** | Technical report / preprint | |
 
@@ -662,16 +792,28 @@ fairness budget and scored on the other half.
 Holm correction, which is where "the two methods tie on NDCG" became the more precise
 "they differ by 0.0012, certainly."
 
-**Next in Phase 2, in priority order:**
+**Done in Phase 3 so far:**
 
-1. **A second and third dataset.** One dataset with one similarity structure cannot tell
-   you whether the operating-point and feasibility effects generalise. This is now the
-   largest gap.
+- **Sparse similarity.** The dense path allocates `n_items²` floats — 15 MB on Luxury
+  Beauty, but **1,016 MB** on Amazon Digital Music, whose catalogue survives 5-core
+  filtering at 11,269 items. Co-occurrence is naturally sparse and the normaliser is only
+  needed where it is non-zero, so the dense outer product is never formed. Stores 9.7% of
+  the dense matrix and reproduces it to exactly 0.0 difference.
+- **Simulated Bifurcation** — see [Continuous dynamics fail too](#continuous-dynamics-fail-too).
+
+**Remaining, in priority order:**
+
+1. **D-Wave Leap QPU.** The free tier gives a minute of QPU time a month, enough to
+   report embedding overhead and chain breaks on a real annealer. This is the one item
+   that needs an account rather than compute.
 2. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
    across machines. See the note on its wall-clock timeout below.
-3. **Paired tests inside the disjoint-split protocol.** The tests above run at a fixed
+3. **Paired tests inside the disjoint-split protocol.** The paired tests run at a fixed
    operating point; combining the two would test the selected configuration on the
    evaluation half directly.
+4. **Run the QUBO on Digital Music**, now that the sparse path makes an 11,269-item
+   catalogue tractable — the first test of whether any of this survives a catalogue an
+   order of magnitude larger.
 
 ## Related work
 

@@ -1,4 +1,9 @@
 dataset,method,reach,ndcg_at_reach
+amazon_giftcards,greedy_topk,,
+amazon_giftcards,mmr,1.0,0.7971646447469275
+amazon_giftcards,quota_mmr,0.25,0.5540413354339846
+amazon_giftcards,qubo_tabu,0.2,0.7588916761321184
+amazon_giftcards,qubo_feasible,0.2,0.7253225547665426
 amazon_lb,greedy_topk,,
 amazon_lb,mmr,1.0,0.9886502027554905
 amazon_lb,quota_mmr,0.3,0.9033177597789744
