@@ -39,8 +39,11 @@ shared tightest budget the QUBO returns a more accurate list than apportionment 
 largest margin (+0.0176) where ALS makes the similarity matrix densest. The mechanism is
 non-separability: apportionment fills each group greedily, which is optimal for a
 separable objective and not for one carrying `lam * sum s_ij x_i x_j`. On the objective
-itself the QUBO's margin over the best classical method grows with `lam` — tied at 0,
-+5.5% at 4, 2x at `lam=4, mu=0`.
+itself apportionment matches the QUBO exactly at `lam=0` and falls progressively
+further behind as the pairwise term grows, missing 4% of the QUBO's improvement over
+random selection at `lam=2`, 13% at `lam=4` and 33% at `lam=8`, monotonically in every
+seed. The margin is anchored between random selection and the QUBO rather than taken
+as a ratio of two signed energies, which is not offset-invariant.
 
 Fifth, the naive quota heuristic collapses entirely where exposure targets are
 proportional rather than equal — which is what real, unequally sized product categories
@@ -457,6 +460,11 @@ python experiments/protocol.py --config configs/amazon_lb.yaml \
   --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
   --method greedy_topk mmr quota_mmr balanced_quota qubo_tabu qubo_feasible
 python experiments/compare_datasets.py
+
+# the lam-scaling table: apportionment ties the QUBO at lam=0 and falls behind as
+# the pairwise term grows. Anchored between random selection and the QUBO, because a
+# ratio of two signed energies is not offset-invariant.
+python experiments/objective_scaling.py --lam 0 1 2 4 8 --repeats 3 --n-users 40
 
 # the n-ladder in section 2.1a. Previously unreproducible: --n-items took one integer
 # and the CSV recorded no n, so the published table could not be regenerated.

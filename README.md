@@ -78,9 +78,11 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    to **+0.0176** on `amazon_lb_mf`, where ALS produces the densest similarity matrix.
    The mechanism is non-separability: apportionment fills each group greedily, which is
    optimal for a separable objective and not for one containing `λ Σ s_ij x_i x_j`. On the
-   objective the solvers actually minimise, the QUBO's margin over the best classical
-   method grows with `λ` — tied at `λ=0`, +5.5% at `λ=4`, 2× at `λ=4, μ=0`. **The QUBO
-   buys the diversity term, not the fairness constraint.**
+   objective the solvers actually minimise, apportionment matches the QUBO exactly at
+   `λ=0` and falls progressively further behind as the pairwise term grows: it misses
+   **4% of the QUBO's improvement at `λ=2`, 13% at `λ=4`, and 33% at `λ=8`**,
+   monotonically in every seed ([`experiments/objective_scaling.py`](experiments/objective_scaling.py)).
+   **The QUBO buys the diversity term, not the fairness constraint.**
 5. **The naive quota heuristic collapses entirely under proportional targets**, where
    apportionment does not. On real Amazon product categories `quota_mmr` meets no budget
    below 1.00 at any hyperparameter setting, while both `balanced_quota` and the QUBO
@@ -433,6 +435,11 @@ python experiments/protocol.py --config configs/amazon_software_vendor.yaml   --
 python experiments/protocol.py --config configs/amazon_software_category.yaml --repeats 3 --n-users 80 $METHODS
 
 python experiments/compare_datasets.py
+
+# the lam-scaling table: apportionment ties the QUBO at lam=0 and falls behind as
+# the pairwise term grows. Anchored between random selection and the QUBO, because a
+# ratio of two signed energies is not offset-invariant.
+python experiments/objective_scaling.py --lam 0 1 2 4 8 --repeats 3 --n-users 40
 
 # figures. plot_pareto picks up the matched baselines automatically -- do not pass
 # results/amazon_lb.csv instead; Gini and catalogue coverage are catalogue-level
