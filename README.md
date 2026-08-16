@@ -48,7 +48,9 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    comparing a QUBO with its fairness term switched **off** against a baseline with
    group quotas built in.
 3. **Under a protocol that tunes every method on one half of the users and scores it on
-   the other, the QUBO's advantage is not accuracy — it is feasibility.** At a fairness
+   the other, the QUBO's advantage is not accuracy — it is feasibility**, and it applies
+   only when `k` does not divide evenly by the number of groups (at k=20 over 4 groups
+   the advantage is +0.0001; at k=5 it is +0.2325). At a fairness
    requirement of `τ ≤ 0.25`, no classical baseline can satisfy the constraint at *any*
    setting of its own hyperparameters, while `qubo_tabu` can and still returns NDCG
    0.904. Loosen the requirement to `τ ≥ 0.30` and quota-MMR becomes feasible and the
@@ -122,6 +124,55 @@ caution against reporting "QUBO reranking achieves good diversity" without check
 whether the sampler optimised anything at all. A near-random feasible list scores *well*
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
+
+### When does the fairness advantage actually exist?
+
+Three formulation choices were made early and never revisited: equal group targets,
+k=10, and n=100–200. `experiments/ablation.py` varies each. One of them substantially
+qualifies the headline claim, which is what ablations are for.
+
+**k must not divide evenly by the number of groups.** With 4 groups:
+
+| k | k / \|C\| | quota-MMR parity | QUBO parity | QUBO advantage |
+|---|---|---|---|---|
+| 5 | 1.25 | 0.5308 | **0.2983** | **+0.2325** |
+| 10 | 2.5 | 0.2525 | **0.1992** | +0.0533 |
+| 20 | **5.0** | 0.0333 | 0.0332 | **+0.0001** |
+
+At k=20 the advantage **vanishes entirely**. The mechanism is exact: quota-MMR assigns
+floor/ceil quotas per group and fills them greedily without backtracking. When k divides
+evenly there is no remainder to allocate, so greedy *is* optimal and there is nothing
+left for global optimisation to win. When it does not divide, the remainder must be
+distributed across groups, and that is a decision greedy makes locally and badly.
+
+So the honest form of the headline claim is narrower and more useful than "the QUBO is
+fairer": **it wins when `k / |C|` is not an integer, and the advantage grows with how
+awkward the remainder is.** A practitioner with k=20 and 4 groups should use quota-MMR
+and save the compute.
+
+**The target definition is free, and only the QUBO can change it.** Equal targets give
+every group `k/|C|` slots; proportional targets match each group's share of the candidate
+set. Scoring under both — necessary, since scoring a proportional-target solver against
+equal-target parity rigs the comparison, which the first version of this ablation did:
+
+| optimised for | method | NDCG | parity[equal] | parity[prop] |
+|---|---|---|---|---|
+| equal | qubo_tabu | 0.8983 | **0.1992** | 0.2628 |
+| equal | quota_mmr | 0.8682 | 0.2525 | 0.2928 |
+| proportional | qubo_tabu | 0.9295 | 0.3583 | **0.1090** |
+| proportional | quota_mmr | 0.8682 | 0.2525 | 0.2928 |
+
+Each formulation wins on its own metric — the QUBO honours whatever target vector it is
+given. But note `quota_mmr` is **identical in both rows**: it cannot express proportional
+targets at all. A quota heuristic hard-codes one notion of fairness, whereas the QUBO
+takes an arbitrary target vector, which is where per-seller contracts or regulatory
+quotas would go. That is an expressiveness argument for the formulation, independent of
+solution quality, and it is the strongest case for the approach that this project has.
+
+**Candidate-set size changes little.** Across n = 50/100/200 the ranking is stable except
+for the `qubo_feasible` vs `quota_mmr` swap already known to be within noise. `qubo_tabu`
+holds up (0.9153 → 0.8981) while `qubo_feasible` degrades faster (0.9006 → 0.8435),
+consistent with the barrier growing with n.
 
 ### Measured against the true optimum
 
@@ -891,7 +942,8 @@ qubo_rerank/
 ├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap · bifurcation · QPU
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
 benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
-experiments/        run_experiment · sweep · protocol · paired · sensitivity · compare_datasets · plots
+experiments/        run_experiment · sweep · protocol · paired · sensitivity ·
+                    optimality · exact · ablation · compare_datasets · plots
 configs/            YAML experiment configs (synthetic + 3 Amazon categories)
 tests/              223 tests · ~75% line coverage
 ```
