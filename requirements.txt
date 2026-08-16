@@ -27,6 +27,16 @@ matplotlib>=3.7
 # library itself never imports pulp.
 pulp>=2.7,<4
 
+# The HiGHS backend itself. `pulp` alone ships CBC; `pulp.HiGHS` only becomes an
+# available solver once highspy is installed, and without it every exact-baseline test
+# fails with "HiGHS: Not Available" rather than skipping.
+#
+# Declared rather than falling back to CBC on purpose. The runtimes reported in
+# docs/findings.md -- 642 s to prove optimality at n=200, against the heuristic's
+# 0.64 s -- are HiGHS numbers, and a silent switch of solver would leave those figures
+# attributed to a solver that did not produce them.
+highspy>=1.7
+
 # Development. pytest>=7.0 is required for the `pythonpath` ini option that lets a
 # bare `pytest` import the package from a checkout.
 pytest>=7.4
