@@ -23,11 +23,19 @@ succeed. Third, under a protocol that tunes every method — baselines included 
 disjoint half of the users, the QUBO's advantage is not accuracy but **feasibility**:
 below a group-exposure requirement of τ ≈ 0.25, no classical reranker tested can satisfy
 the constraint at any setting of its own hyperparameters, and the QUBO can. This holds on
-**six benchmarks**: four Amazon categories spanning 77x in size and 63x in density,
+**eight benchmarks**: four Amazon categories spanning 77x in size and 63x in density,
 MovieLens 100K (a second domain, with curator-assigned genres instead of popularity
-tiers), and one that swaps ItemKNN for matrix factorisation. The last two exist to close
-the objections that the result depends on how groups are defined, or on one retrieval
-model's particular bias. Neither holds.
+tiers), one that swaps ItemKNN for matrix factorisation, and two that partition the
+Software catalogue by **real seller** and **real product category** from Amazon's
+metadata export rather than by any quantity derived from the interactions being scored.
+The last four exist to close the objections that the result depends on how groups are
+defined, or on one retrieval model's particular bias. None holds.
+
+Fourth, where the exposure targets are proportional rather than equal — which is what
+real, unequally sized product categories call for — the classical quota reranker does not
+merely degrade, it fails outright, meeting no budget at any setting of its own
+hyperparameter while the QUBO is unaffected and simultaneously more accurate. A matched
+ablation changing only the target vector isolates the cause.
 
 We also report what the method does *not* buy: at looser fairness requirements it ties
 the strongest baseline on accuracy (a paired test over 200 users puts the difference at
