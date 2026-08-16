@@ -21,8 +21,9 @@ the energy cost of doing so.
 **Documentation.** This file is the summary: what was found, the headline numbers, and
 how to reproduce them. Two companions carry the detail —
 [`docs/findings.md`](docs/findings.md) for the mechanisms and the experiments behind each
-claim, and [`docs/report.md`](docs/report.md) for a standalone technical write-up with
-the limitations stated in one place.
+claim, and [`docs/report.md`](docs/report.md) for a standalone technical write-up.
+[`docs/limitations.md`](docs/limitations.md) lists what is still wrong or unmeasured,
+including the claim this project got wrong for 41 commits and how it was caught.
 
 ## The formulation
 
@@ -59,40 +60,74 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    only the first and concluded the classical baseline wins; that was an artifact of
    comparing a QUBO with its fairness term switched **off** against a baseline with
    group quotas built in.
-3. **Under a protocol that tunes every method on one half of the users and scores it on
-   the other, the QUBO's advantage is not accuracy — it is feasibility**, and it applies
-   only when `k` does not divide evenly by the number of groups (at k=20 over 4 groups
-   the advantage is +0.0001; at k=5 it is +0.2325). At a fairness
-   requirement of `τ ≤ 0.25`, no classical baseline can satisfy the constraint at *any*
-   setting of its own hyperparameters, while `qubo_tabu` can and still returns NDCG
-   0.904. Loosen the requirement to `τ ≥ 0.30` and quota-MMR becomes feasible and the
-   accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
-   users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
-   **0.0012 NDCG**. Certain, and negligible.
-4. **That feasibility result holds on 8 of 8 benchmarks**, spanning 77× in catalogue
-   size and 63× in density, across two domains, **four group definitions** and **two
-   retrieval models**. On MovieLens the groups are curator-assigned genres rather than
-   popularity tiers; on `amazon_lb_mf` the candidates come from matrix factorisation
-   rather than ItemKNN; and two Software benchmarks group by **real seller** and **real
-   product category** taken from Amazon's metadata export. Together those close the two
-   obvious objections — that the QUBO only wins because the groups are defined by the
-   signal it exploits, and that it only wins because of ItemKNN's particular bias.
-5. **Where the exposure targets are proportional rather than equal, quota-MMR fails
-   outright** — it meets no budget below 1.00 on real product categories, while the QUBO
-   is unaffected at 0.20 *and* more accurate. A matched ablation changing only the target
-   vector isolates the cause: round-robin integer quotas cannot represent a proportional
-   target.
-6. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
-   wins intra-list similarity outright.
+3. **The QUBO's advantage is *not* feasibility. A fifteen-line classical baseline reaches
+   the same fairness budget on 8 of 8 benchmarks.** An earlier version of this file
+   claimed no classical reranker could satisfy `τ ≤ 0.25` at any setting of its own
+   hyperparameters. That was false, and it was false for an avoidable reason: the only
+   classical fairness baseline implemented here, `quota_mmr`, caps each group at
+   `ceil(k/|C|)` as an *upper* bound with no remainder rule, so it can finish 3/3/3/1 over
+   four groups and never recover — parity 0.30 against an arithmetic floor of 0.20. That
+   is a defect of one heuristic, not a property of classical reranking.
+   `BalancedQuota` — textbook largest-remainder apportionment — attains the floor
+   deterministically, on every user, at a small fraction of the compute. **Its reach ties
+   the QUBO's on every benchmark tested.** (No multiplier is quoted here on purpose: see
+   [Timing](#timing-is-provisional).)
+4. **What survives is small, consistent, and about accuracy.** At that shared tightest
+   budget the QUBO returns a better list than the apportionment baseline on **8 of 8**
+   benchmarks — mean **+0.0086 NDCG**, sign test and Wilcoxon both **p = 0.008** — rising
+   to **+0.0176** on `amazon_lb_mf`, where ALS produces the densest similarity matrix.
+   The mechanism is non-separability: apportionment fills each group greedily, which is
+   optimal for a separable objective and not for one containing `λ Σ s_ij x_i x_j`. On the
+   objective the solvers actually minimise, the QUBO's margin over the best classical
+   method grows with `λ` — tied at `λ=0`, +5.5% at `λ=4`, 2× at `λ=4, μ=0`. **The QUBO
+   buys the diversity term, not the fairness constraint.**
+5. **The naive quota heuristic collapses entirely under proportional targets**, where
+   apportionment does not. On real Amazon product categories `quota_mmr` meets no budget
+   below 1.00 at any hyperparameter setting, while both `balanced_quota` and the QUBO
+   reach 0.20. A matched ablation changing only the target vector — same catalogue,
+   partition, grids and seeds — restores `quota_mmr` to 0.30, isolating the cause as
+   round-robin integer quotas being unable to represent a target of 3.6/1.15/0.95/4.3.
+6. **It still costs far more compute**, `quota_mmr` still wins intra-list similarity
+   outright, and the apportionment baseline is dramatically cheaper than the QUBO for an
+   equal fairness guarantee. Every multiplier this section used to quote has been
+   withdrawn pending a clean measurement — see [Timing](#timing-is-provisional).
 
-(1) is why (3) is worth trusting: without the barrier fix the solver never optimises
-well enough for the operating point to matter. Numbers in [Results](#results).
+<a id="timing-is-provisional"></a>
+### Timing is provisional and must not be quoted
+
+Earlier versions of this file put the apportionment baseline at "~800× cheaper" than the
+QUBO. **That figure is withdrawn.** It came from a single ad-hoc run, not from the
+committed artifacts. Recomputed across all eight `*_protocol.csv` files the ratio is
+about **200×** (`qubo_tabu` 11.10 s mean against `balanced_quota` 0.056 s) — a factor of
+four smaller than the number that was published.
+
+Even the 200× figure is **not publishable**, because every `seconds`, `kwh` and `co2_kg`
+value in the current CSVs was recorded while a second CPU-bound job shared the machine.
+This repository's own rule (`docs/limitations.md`) is that timing and energy require a
+clean sequential run, and these results do not have one. Contention inflates the columns
+unevenly across methods, which is exactly the comparison a multiplier depends on.
+
+What is safe to say is qualitative and follows from the algorithms rather than the clock:
+apportionment is a single O(n log n) pass with no search, while the QUBO solvers run
+iterated local search over a dense n×n model. **The quality conclusions are unaffected** —
+`reach`, `ndcg@k` and `exposure_parity` are deterministic given the seed and cannot be
+changed by CPU contention.
+
+(1) is why (4) is worth trusting: without the barrier fix the solver never optimises well
+enough for the operating point to matter. Numbers in [Results](#results).
+
+> **This section was rewritten after an independent audit.** The previous headline — that
+> the QUBO achieved a fairness guarantee no classical method could — did not survive the
+> baseline above, and the finding that replaced it is narrower. The audit is the reason
+> the claim is now defensible, and the old one is left described rather than deleted so
+> the correction is visible.
 
 > An intermediate version of this file claimed the QUBO beat quota-MMR on NDCG as well.
 > That margin was measured with `λ` and `μ` selected on the same dataset they were
-> scored on, and it **did not survive** the disjoint-split protocol. What survived is
-> (3), which is a narrower claim and a more useful one — it says *when* to reach for a
-> QUBO rather than that it is better.
+> scored on, and it **did not survive** the disjoint-split protocol. What survived that
+> round became (3) — later refuted in turn by the apportionment baseline, leaving (4).
+> Each correction narrowed the claim, and each was found by testing it harder rather than
+> by tuning it away.
 
 ## Results
 
@@ -186,7 +221,7 @@ to differ in the ways that should matter:
 |---|---|---|---|
 | interactions (5-core) | 32,732 | 12,454 | 2,960 |
 | users / items | 3,589 / 1,366 | 1,779 / 729 | 456 / 147 |
-| density | 0.0067 | 0.0096 | **0.0442** |
+| density | 0.0049 | 0.0078 | **0.0373** |
 | candidate-set ceiling on recall | 0.49 | 0.28 | — |
 | candidates reranked | 200 | 200 | 100 |
 
@@ -199,14 +234,14 @@ tests the constraint against categories defined independently of the data being 
 
 | dataset | items | density | groups from | retrieval |
 |---|---|---|---|---|
-| Gift Cards | 147 | 0.0442 | popularity tier | ItemKNN |
-| Software | 729 | 0.0096 | popularity tier | ItemKNN |
-| Luxury Beauty | 1,366 | 0.0067 | popularity tier | ItemKNN |
+| Gift Cards | 147 | 0.0373 | popularity tier | ItemKNN |
+| Software | 729 | 0.0078 | popularity tier | ItemKNN |
+| Luxury Beauty | 1,366 | 0.0049 | popularity tier | ItemKNN |
 | Digital Music | 11,268 | 0.0007 | popularity tier | ItemKNN |
 | **MovieLens 100K** | 1,349 | 0.0773 | **genre** | ItemKNN |
-| **Luxury Beauty (MF)** | 1,366 | 0.0067 | popularity tier | **ALS** |
-| **Software (seller)** | 729 | 0.0096 | **real vendor** | ItemKNN |
-| **Software (category)** | 729 | 0.0096 | **real product category** | ItemKNN |
+| **Luxury Beauty (MF)** | 1,366 | 0.0049 | popularity tier | **ALS** |
+| **Software (seller)** | 729 | 0.0078 | **real vendor** | ItemKNN |
+| **Software (category)** | 729 | 0.0078 | **real product category** | ItemKNN |
 
 The last two use Amazon's separate metadata export rather than a partition derived from
 the interaction counts being evaluated: 99.3% of the filtered Software catalogue carries a
@@ -220,71 +255,75 @@ stronger guarantee:
 
 | method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | LB (MF) | SW seller | SW category |
 |---|---|---|---|---|---|---|---|---|
-| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 | 0.30 | 0.30 | *never* |
-| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** | **0.20** | **0.20** |
-| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** | **0.20** | **0.20** |
+| quota_mmr | 0.30 | 0.30 | 0.30 | 0.30 | 0.30 | 0.30 | 0.30 | *never* |
+| **balanced_quota** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** | **0.20** | **0.20** |
+| qubo_tabu | 0.20 | 0.22 | 0.22 | 0.20 | 0.20 | 0.20 | 0.20 | 0.20 |
+| qubo_feasible | 0.20 | 0.22 | 0.22 | 0.20 | 0.20 | 0.20 | 0.20 | 0.20 |
 
-`greedy_topk` and `mmr` are omitted: neither meets any budget on most benchmarks.
+**The QUBO is never strictly tighter than `balanced_quota` — 8 ties out of 8.** That row
+is the whole correction: a classical apportionment baseline meets every budget the QUBO
+meets. `greedy_topk` and `mmr` are omitted; neither meets any budget on most benchmarks.
 
-NDCG@10 delivered at that tightest budget:
+NDCG@10 delivered at that tightest budget — this is where the QUBO does win:
 
-| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | SW seller | SW category |
-|---|---|---|---|---|---|---|---|
-| quota_mmr | 0.5540 | 0.9034 | 0.8398 | 0.9033 | **0.9069** | **0.9445** | 0.9147 |
-| **qubo_tabu** | **0.7589** | 0.9044 | 0.8457 | 0.9026 | 0.9009 | 0.9428 | **0.9500** |
-| qubo_feasible | 0.7253 | 0.8475 | 0.7573 | 0.8333 | 0.8111 | 0.8747 | 0.9116 |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | LB (MF) | SW seller | SW category |
+|---|---|---|---|---|---|---|---|---|
+| quota_mmr | 0.7581 | 0.8931 | 0.8280 | 0.9084 | **0.9069** | 0.9365 | **0.9405** | 0.9187 |
+| balanced_quota | 0.7514 | 0.8864 | 0.8213 | 0.8991 | 0.8997 | 0.9263 | 0.9317 | 0.9364 |
+| **qubo_tabu** | **0.7591** | **0.8923** | **0.8236** | **0.9075** | 0.9039 | **0.9439** | 0.9396 | **0.9512** |
+| qubo_feasible | 0.7263 | 0.8360 | 0.7556 | 0.8414 | 0.8111 | 0.8823 | 0.8756 | 0.9166 |
 
-The `SW category` column is the only benchmark where a QUBO variant wins **both** axes
-outright: `quota_mmr` meets no budget at any setting of its own hyperparameter, while
-`qubo_tabu` reaches 0.20 *and* is more accurate. That column also carries the only
-proportional target vector in the table, and the two facts are causally linked — see the
-ablation in [docs/findings.md](docs/findings.md#proportional-targets).
+Against `balanced_quota` at the same budget, `qubo_tabu` is more accurate on **8 of 8**
+benchmarks: mean **+0.0086 NDCG**, sign test and Wilcoxon both **p = 0.008**. The largest
+margin is `LB (MF)` at **+0.0176**, where ALS gives the densest similarity matrix and the
+pairwise term therefore matters most. Note `quota_mmr` sometimes posts a higher NDCG than
+either — it is scoring at a *looser* budget (0.30) and so is not comparable down the
+column; that is exactly why reach and accuracy have to be read together.
 
 ![cross-dataset fairness budget curves](results/datasets_budget.png)
 
-**Holds on 8 of 8.** Gift Cards is the interesting one — it was included precisely
-because it was the case most likely to break the result, being small and dense enough
-that a greedy heuristic has room to do well. Instead the QUBO wins *both* axes there:
-a tighter reach **and** +0.20 NDCG at it. That matches what the config predicted before
-the run: small `n` is exactly where exhaustive-ish search should pay off, which makes it
-a fair place to look for the method's best case rather than a hostile one.
+![cross-dataset fairness budget curves](results/datasets_budget.png)
 
-**Why quota-MMR stalls, mechanically.** Its reach is 0.30 on both 200-candidate
-datasets, and the arithmetic floor for k=10 over 4 groups is 0.20. That gap is not about
-data: quota-MMR fills group quotas greedily and cannot backtrack, so a slot spent early
-on a group that later proves cheap to fill is not recoverable. The QUBO chooses the
-whole allocation at once and reaches the floor. Gift Cards' smaller candidate set
-loosens the constraint enough for quota-MMR to reach 0.25, which is consistent with the
-same explanation.
+**Ties on 8 of 8.** `balanced_quota` meets every budget the QUBO meets, on every
+benchmark — including Gift Cards, which was included precisely because it was the case
+most likely to break the *old* result, being small and dense enough that a greedy
+heuristic has room to do well. It broke it.
 
-**Four benchmarks close the obvious objections.**
+**Why quota-MMR stalls, and why that is not a fact about classical reranking.**
+Quota-MMR's reach is 0.30 while the arithmetic floor for k=10 over 4 groups is 0.20. The
+mechanism is a missing remainder rule: it caps each group at `ceil(k/|C|) = 3` as an
+upper bound only, so 3/3/3/1 is reachable and unrecoverable. Largest-remainder
+apportionment allocates 3/3/2/2 by construction and provably minimises
+`Σ_c |quota_c − target_c|`, which *is* the exposure-parity numerator. This project
+described that mechanism in `docs/findings.md` for 41 commits and did not implement the
+baseline that exploits it — which is how a claim about one heuristic was reported as a
+claim about a category of methods.
 
-*MovieLens and the Software metadata runs close the group objection.* The Amazon
-benchmarks group items by popularity tier — a partition derived from the very
-interaction counts being evaluated, so a sceptic can reasonably say the QUBO only wins
-because those groups are structurally easy to balance. Three benchmarks answer that with
-groups the QUBO cannot have engineered:
+**What the group and model objections now establish.** These benchmarks were built to
+close two objections to the old claim. They still do useful work, but for the *new* one:
+the small accuracy advantage is not an artefact of how groups were defined or which
+retrieval model produced the candidates.
 
-- **MovieLens** groups by genre, assigned by the dataset's curators. Reach 0.20 against
-  quota-MMR's 0.25. Note also that quota-MMR is *slightly more accurate* there (0.9069 vs
-  0.9009) while still unable to meet the tighter budget — the whole claim in one row.
-- **Software (seller)** groups by real vendor concentration, from Amazon's metadata
-  export. Reach 0.20 against quota-MMR's 0.30, unchanged from the popularity-tier run on
-  the same catalogue.
-- **Software (category)** groups by real product category. Reach 0.20 against quota-MMR
-  *never meeting any budget*.
+- **MovieLens** groups by curator-assigned genre, not popularity. Reach ties at 0.20;
+  QUBO +0.0041 NDCG.
+- **Software (seller)** and **Software (category)** group by real vendor and real product
+  category from Amazon's metadata export, both near-independent of the popularity tiers
+  they replace (NMI 0.012 and 0.016). Reach ties at 0.20; QUBO +0.0079 and +0.0148.
+- **`amazon_lb_mf`** draws candidates from matrix factorisation rather than ItemKNN.
+  Reach ties at 0.20; QUBO **+0.0176**, the largest margin in the table — ALS produces
+  the densest similarity matrix, so the pairwise term has the most to say.
 
-The seller and category partitions are near-independent of the popularity tiers they
-replace (NMI 0.012 and 0.016), so this is a different question rather than the same one
-relabelled.
+**The claim this repo now makes** is narrower than the one it made before, and it is
+about *when* the machinery pays rather than that it is better:
 
-*`amazon_lb_mf` closes the model objection* by drawing candidates from matrix
-factorisation rather than ItemKNN.
-
-**This is the strongest claim in the repo**, and it is a claim about *when* to use the
-method rather than that the method is better: below a group-exposure requirement of
-roughly 0.25, the classical rerankers tested here cannot satisfy the constraint at any
-setting of their own hyperparameters, and the QUBO can.
+> A correct classical apportionment baseline achieves the same exposure-fairness
+> guarantee as the QUBO on every benchmark tested, deterministically and at a small
+> fraction of the compute (no multiplier quoted — see [Timing](#timing-is-provisional)).
+> The QUBO's remaining advantage is confined to the non-separable part of the objective:
+> at the same fairness budget it returns a more accurate list on 8 of 8 benchmarks
+> (+0.0086 NDCG, p = 0.008), and its margin on the objective grows with the diversity
+> weight λ. If you need exposure targets met, use apportionment. If you need the
+> diversity term optimised jointly with them, the QUBO earns its compute.
 
 ### Paired per-user tests
 

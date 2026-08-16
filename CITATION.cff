@@ -34,22 +34,24 @@ abstract: >-
   classical comparison by a larger margin than the methods differ from one another; a
   comparison run with the fairness term disabled reverses the conclusion.
 
-  Fourth, under a protocol that tunes every method on a disjoint half of the users, the
-  QUBO's advantage is feasibility rather than accuracy: below a group-exposure budget of
-  about 0.25 no classical reranker tested can satisfy the constraint at any setting of
-  its own hyperparameters. This holds on eight benchmarks spanning two domains, four
-  group definitions -- popularity tier, curator-assigned genre, real seller and real
-  product category -- and two retrieval models.
+  Fourth, and correcting an earlier version of this work: the formulation's advantage is
+  not feasibility. A textbook largest-remainder apportionment baseline attains the same
+  exposure-fairness budget on all eight benchmarks, deterministically and at a small
+  fraction of the compute (no multiplier is quoted: the timing columns were recorded on a
+  contended machine and await a clean sequential measurement). The earlier claim that no classical reranker could meet the constraint
+  measured a missing remainder rule in one quota heuristic rather than any property of
+  classical reranking, and was refuted by a fifteen-line baseline.
 
-  Fifth, that advantage has a precise boundary: it disappears when the list size divides
-  evenly by the number of groups, because a greedy quota allocation is then already
-  optimal.
+  Fifth, what survives is smaller and about accuracy. At that shared tightest budget the
+  QUBO returns a more accurate list than the apportionment baseline on eight of eight
+  benchmarks -- mean +0.0086 NDCG, sign test and Wilcoxon both p = 0.008 -- with the
+  largest margin where the similarity matrix is densest. The mechanism is
+  non-separability: apportionment fills each group greedily, which is optimal for a
+  separable objective and not for one carrying a pairwise diversity term, and the QUBO's
+  margin on the objective grows with that term's weight.
 
-  Sixth, where the exposure targets are proportional rather than equal, the classical
-  quota reranker fails outright rather than degrading: on real Amazon product categories
-  it meets no budget below 1.00 at any setting of its own hyperparameter, while both QUBO
-  variants are unaffected and the better of them is also the most accurate method tested.
-  A matched ablation that changes only the target vector -- same catalogue, partition,
-  grids and seeds -- restores the quota reranker to its usual reach, isolating the cause
-  as the inability of round-robin integer quotas to represent a proportional target
-  rather than any property of the partition.
+  Sixth, the naive quota heuristic collapses entirely where exposure targets are
+  proportional rather than equal, meeting no budget below 1.00 on real product
+  categories, while both the apportionment baseline and the QUBO reach 0.20. A matched
+  ablation changing only the target vector restores it, isolating round-robin integer
+  quotas as the cause.

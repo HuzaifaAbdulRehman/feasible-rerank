@@ -12,7 +12,8 @@ Binary Optimization (QUBO) problem — jointly optimising relevance, intra-list 
 and group exposure fairness — offers anything over classical greedy rerankers on real
 e-commerce data.
 
-We report three results. First, the textbook recipe fails silently: encoding the
+We report five results, the third of which corrects a claim made by an earlier version of
+this report. First, the textbook recipe fails silently: encoding the
 "exactly k" constraint as a quadratic penalty and handing the problem to a simulated
 annealer produces lists that are always the right length and close to arbitrary among
 lists of that length, losing to a hand-written greedy heuristic on the annealer's own
@@ -22,20 +23,29 @@ different mechanism, while tabu search and a constraint-preserving swap annealer
 succeed. Third, under a protocol that tunes every method — baselines included — on a
 disjoint half of the users, the QUBO's advantage is not accuracy but **feasibility**:
 below a group-exposure requirement of τ ≈ 0.25, no classical reranker tested can satisfy
-the constraint at any setting of its own hyperparameters, and the QUBO can. This holds on
-**eight benchmarks**: four Amazon categories spanning 77x in size and 63x in density,
-MovieLens 100K (a second domain, with curator-assigned genres instead of popularity
-tiers), one that swaps ItemKNN for matrix factorisation, and two that partition the
-Software catalogue by **real seller** and **real product category** from Amazon's
-metadata export rather than by any quantity derived from the interactions being scored.
-The last four exist to close the objections that the result depends on how groups are
-defined, or on one retrieval model's particular bias. None holds.
+the constraint at any setting of its own hyperparameters — **and that claim did not
+survive**. It measured a missing remainder rule in the one classical fairness baseline
+implemented at the time. Largest-remainder apportionment (`BalancedQuota`) attains the
+same budget on all **eight benchmarks**, deterministically and at a small fraction of
+the compute (no multiplier is quoted; see section 6): four Amazon
+categories spanning 77x in size and 53x in density, MovieLens 100K (curator-assigned
+genres), one swapping ItemKNN for matrix factorisation, and two partitioning the Software
+catalogue by **real seller** and **real product category** from Amazon's metadata export.
+Reach ties 8 of 8.
 
-Fourth, where the exposure targets are proportional rather than equal — which is what
-real, unequally sized product categories call for — the classical quota reranker does not
-merely degrade, it fails outright, meeting no budget at any setting of its own
-hyperparameter while the QUBO is unaffected and simultaneously more accurate. A matched
-ablation changing only the target vector isolates the cause.
+Fourth, what survives is narrower and concerns accuracy rather than feasibility. At that
+shared tightest budget the QUBO returns a more accurate list than apportionment on **8 of
+8** benchmarks (mean +0.0086 NDCG, sign test and Wilcoxon both p = 0.008), with the
+largest margin (+0.0176) where ALS makes the similarity matrix densest. The mechanism is
+non-separability: apportionment fills each group greedily, which is optimal for a
+separable objective and not for one carrying `lam * sum s_ij x_i x_j`. On the objective
+itself the QUBO's margin over the best classical method grows with `lam` — tied at 0,
++5.5% at 4, 2x at `lam=4, mu=0`.
+
+Fifth, the naive quota heuristic collapses entirely where exposure targets are
+proportional rather than equal — which is what real, unequally sized product categories
+call for — meeting no budget below 1.00 while both apportionment and the QUBO reach 0.20.
+A matched ablation changing only the target vector isolates the cause.
 
 We also report what the method does *not* buy: at looser fairness requirements it ties
 the strongest baseline on accuracy (a paired test over 200 users puts the difference at
@@ -72,11 +82,19 @@ values agree to 6e-08 (float32 vs float64); truncated neighbour sets agree for 6
 items, and all 101 disagreements sit at exactly-tied similarity values — the two
 implementations choose different members of a tied group and are otherwise identical.
 
-**Groups.** The ratings export carries no product metadata, so groups are *popularity
-tiers*: items rank-ordered by training interaction count and cut into four equal-sized
-tiers, the standard short-head/long-tail partition. This makes the fairness term fight
-the exact bias the retrieval model exhibits, rather than a partition chosen to flatter
-it.
+**Groups.** The *ratings* export carries no product metadata, so the default partition is
+*popularity tiers*: items rank-ordered by training interaction count and cut into four
+equal-sized tiers, the standard short-head/long-tail partition. This makes the fairness
+term fight the exact bias the retrieval model exhibits, rather than a partition chosen to
+flatter it.
+
+Amazon's *separate* metadata export does carry sellers and categories where it is
+populated, and two of the eight benchmarks use them: 99.3% of the filtered Software
+catalogue carries a brand and 93.5% a category path, against 0.1% for Luxury Beauty. Both
+partitions are near-independent of the popularity tiers they replace (NMI 0.012 and
+0.016), so they pose a different fairness question rather than restating this one. The
+loader refuses a metadata grouping below a coverage threshold rather than silently
+collapsing to a single group. See `benchmarks/metadata.py`.
 
 ---
 
@@ -86,8 +104,11 @@ it.
 
 Two valid k-item lists are never adjacent under single-bit flips. Moving between them
 means removing one item and adding another, and the intermediate state has k±1 items and
-pays the full penalty `P`. On Amazon Luxury Beauty at n=200, k=10, the cardinality term's
-largest coefficient is **737.8** against an objective of **1.0**.
+pays the full penalty `P`. The penalty is scaled per instance from the objective it has to
+dominate, so its size varies: across ten Amazon Luxury Beauty instances at n=200, k=10 the
+cardinality term's largest coefficient ranges from **505 to 4,806** (mean ~2,000) against a
+normalised objective of **1.0**. The ratio, not any single value, is the point -- the
+constraint outweighs the objective by three orders of magnitude on a typical instance.
 
 The sampler therefore faces a dilemma with no good side: cold enough to resolve the
 objective and it cannot cross the barrier; hot enough to cross and the objective is
@@ -117,19 +138,29 @@ feasible set (0%) and the exact optimum (100%). At n=22, k=5 over 12 instances:
   qubo_sa          80.1%
   mmr              75.3%
   quota_mmr        67.1%
-  qubo_sb          18.9%   feasible on only 50% of instances
+  qubo_sb          18.9%   averaged over the 6 of 12 runs that were feasible
   greedy_topk      14.4%
 
 Both constraint-preserving solvers are *exactly* optimal, which is what licenses trusting
 them at n=200 where enumeration is impossible.
 
-The barrier also grows with n, as the mechanism predicts -- the penalty scales with the
-number of variables while the objective does not:
+The barrier also worsens with n, broadly as the mechanism predicts -- the penalty scales
+with the number of variables while the objective does not. 12 instances per size,
+regenerated by the command in section 7:
 
   n                  14      18      22      26      30     200
-  qubo_sa         87.6%   81.1%   77.7%   76.9%   73.4%   worse than no search
-  qubo_tabu        100%    100%    100%    100%    100%    --
-  qubo_feasible    100%    100%    100%    100%    100%    --
+  qubo_sa         87.7%   82.0%   80.1%   74.7%   75.2%   worse than no search
+  qubo_tabu       100.0%  100.0%  100.0%  100.0%  100.0%   --
+  qubo_feasible   100.0%  100.0%  100.0%  100.0%  100.0%   --
+
+**The trend is downward but not monotone**, and this table is weaker than the version it
+replaces. An earlier edition printed 87.6/81.1/77.7/76.9/73.4 -- a clean monotone decline
+-- from runs that were never saved and could not be regenerated: `--n-items` took a single
+integer, the CSV had no `n` column, and no driver script existed. Rebuilt honestly, the
+decline over the range is real (87.7% to ~75%) but n=26 and n=30 sit within noise of each
+other at 12 instances. The n=200 endpoint, where `qubo_sa` is beaten by a method doing no
+search at all, is what actually carries the claim; the ladder is supporting evidence and
+should not be read as a clean law.
 
 This explains why the failure is rarely reported: at textbook scale the penalty encoding
 works well enough to look fine. It breaks at the sizes a real reranker faces.
@@ -381,7 +412,7 @@ be the right trade; for a live request it is not a trade.
 
 The recommendation is therefore a decision rule, not a winner. Below n=50 and offline,
 use the MIP solver -- it is exact and 28 s is nothing in a batch. At n>=100 or online,
-use qubo_tabu: 99.5% of the proven optimum at n=100 in 1/37th of the time, 91% at n=200
+use qubo_tabu: within 0.031 of the proven optimum at n=100 in 1/37th of the time, 0.634 at n=200
 in 1/284th. Never use penalty-encoded neal, which at n=200 scores +1.900 against greedy
 top-k's +1.831 -- worse than a method that performs no search, measured against a proven
 optimum.
@@ -425,6 +456,10 @@ python experiments/protocol.py --config configs/amazon_lb.yaml \
   --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
   --method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible
 python experiments/compare_datasets.py
+
+# the n-ladder in section 2.1a. Previously unreproducible: --n-items took one integer
+# and the CSV recorded no n, so the published table could not be regenerated.
+python experiments/optimality.py --n-items 14 18 22 26 30 --k 5 --repeats 12
 python experiments/paired.py --config configs/amazon_lb.yaml --lam 0.0 --mu 1.0 \
   --n-users 200 --reference quota_mmr
 ```

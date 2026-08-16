@@ -25,8 +25,10 @@ penalty `P`. So the sampler faces a dilemma with no good side:
   whichever feasible set it first stumbled into;
 - hot enough to cross the barrier → the objective is thermal noise.
 
-On Amazon Luxury Beauty (`n=200`, `k=10`), the cardinality term's largest coefficient is
-**737.8** against the objective's **1.0**. Measured consequences:
+On Amazon Luxury Beauty (`n=200`, `k=10`) the cardinality term's largest coefficient
+ranges from **505 to 4,806** across ten instances (mean ~2,000) against the normalised
+objective's **1.0** -- the penalty is scaled per instance from the objective it must
+dominate, so it is not a single fixed number. Measured consequences:
 
 - `neal` returns lists of exactly the right length **100% of the time** — the constraint
   is satisfied, so nothing looks wrong.
@@ -89,8 +91,15 @@ a recommender answering a live request it is not a trade at all.
 So the honest recommendation is a decision rule rather than a winner:
 
 - **n ≤ 50, offline:** use the MIP solver. It is exact, and 28 seconds is nothing in a batch.
-- **n ≥ 100, or online:** use `qubo_tabu`. At n=100 it reaches **99.5%** of the proven
-  optimum in 1/37th of the time; at n=200, **91%** in 1/284th.
+- **n ≥ 100, or online:** use `qubo_tabu`. At n=100 its objective is within **0.031**
+  of the proven optimum in 1/37th of the time; at n=200, within **0.634** in 1/284th.
+
+  These were previously quoted as "99.5% of the proven optimum" and "91%". That figure
+  was a quotient of two *signed* energies whose zero is arbitrary -- add a constant to the
+  objective and the percentage moves. The same formula gives **146.6%** at n=20, where the
+  optimum happens to be positive, which is why that column was never quoted. Absolute gaps
+  are reported instead, and `experiments/exact.py` now also prints an offset-invariant
+  recovered fraction anchored between a random feasible set (0%) and the optimum (100%).
 - **Never use penalty-encoded `neal`.** At n=200 it scores +1.900 against greedy top-k's
   +1.831 — *worse than a method that does no search at all*, now measured against a
   proven optimum rather than against other heuristics.
@@ -98,8 +107,9 @@ So the honest recommendation is a decision rule rather than a winner:
 **This also corrects an earlier claim in this README.** The optimality experiment found
 tabu and swap annealing *exactly* optimal, but that was at n≤30 with k=5, where
 enumeration is possible. Against proven optima at realistic sizes they are near-optimal
-and **degrade with n** — 99.5% at n=100, 91% at n=200. "Exactly optimal" was true of the
-regime it was measured in and false as a general statement.
+and **degrade with n** — the gap to proven optimum grows from 0.031 at n=100 to 0.634 at
+n=200. "Exactly optimal" was true of the regime it was measured in and false as a general
+statement.
 
 
 ## When does the fairness advantage actually exist?
@@ -128,7 +138,8 @@ fairer": **it wins when `k / |C|` is not an integer, and the advantage grows wit
 awkward the remainder is.** A practitioner with k=20 and 4 groups should use quota-MMR
 and save the compute.
 
-**The target definition is free, and only the QUBO can change it.** Equal targets give
+**The target definition is free, and the naive quota heuristic cannot change it.** Equal
+targets give
 every group `k/|C|` slots; proportional targets match each group's share of the candidate
 set. Scoring under both — necessary, since scoring a proportional-target solver against
 equal-target parity rigs the comparison, which the first version of this ablation did:
@@ -142,10 +153,14 @@ equal-target parity rigs the comparison, which the first version of this ablatio
 
 Each formulation wins on its own metric — the QUBO honours whatever target vector it is
 given. But note `quota_mmr` is **identical in both rows**: it cannot express proportional
-targets at all. A quota heuristic hard-codes one notion of fairness, whereas the QUBO
-takes an arbitrary target vector, which is where per-seller contracts or regulatory
-quotas would go. That is an expressiveness argument for the formulation, independent of
-solution quality, and it is the strongest case for the approach that this project has.
+targets at all. `QuotaMMR` hard-codes one notion of fairness, whereas the QUBO takes an
+arbitrary target vector, which is where per-seller contracts or regulatory quotas would go.
+
+**This is an argument against that heuristic, not for the QUBO.** An earlier version of
+this section called it "the strongest case for the approach that this project has". It is
+not: `BalancedQuota` also reads the target vector, and on the real-category benchmark it
+reaches the same 0.20 the QUBO does. Expressiveness distinguishes *apportionment* from
+*round-robin quotas*; it does not distinguish the QUBO from apportionment.
 
 <a id="proportional-targets"></a>
 
@@ -241,7 +256,7 @@ n=22, k=5, λ=4, 12 instances:
 — not merely better than a broken one — and `tests/test_optimality.py` pins it so a
 regression cannot pass quietly. Note the qualifier: this holds at n≤30, k=5. Checked
 against a MIP solver's proven optima at realistic sizes, they are near-optimal rather
-than optimal, and the gap grows with n (99.5% at n=100, 91% at n=200). See
+than optimal, and the gap grows with n (0.031 at n=100, 0.634 at n=200). See
 [Why not just use an exact solver?](#why-not-just-use-an-exact-solver).
 
 **And the barrier grows with n, exactly as the mechanism predicts.** The penalty scales
@@ -250,7 +265,7 @@ the problem grows. It does, monotonically:
 
 | n | 14 | 18 | 22 | 26 | 30 | 200 |
 |---|---|---|---|---|---|---|
-| `qubo_sa` recovered | 87.6% | 81.1% | 77.7% | 76.9% | 73.4% | *worse than no search* |
+| `qubo_sa` recovered | 87.7% | 82.0% | 80.1% | 74.7% | 75.2% | *worse than no search* |
 | `qubo_tabu` | **100%** | **100%** | **100%** | **100%** | **100%** | — |
 | `qubo_feasible` | **100%** | **100%** | **100%** | **100%** | **100%** | — |
 
@@ -660,7 +675,7 @@ QUBO from `qubo_sa`'s 0.475 NDCG, but at `λ=4, μ=0` they rescue it into second
 
 **This is the wrong operating point, and it is the one this config picks.** `μ=0` means
 the fairness term is off, so the QUBO is being scored on group exposure parity while
-having been given no reason to optimise it. [Section 2](docs/findings.md#the-operating-point-decides-the-comparison)
+having been given no reason to optimise it. [Section 2](#the-operating-point-decides-the-comparison)
 re-runs it at `λ=0, μ=1`, where the picture reverses. Both tables are real; the
 difference between them is a configuration choice, and it is larger than the difference
 between the methods.
@@ -709,7 +724,7 @@ the left of `quota_mmr` (green star), i.e. more accurate *and* cheaper on that a
 
 On group exposure parity it does: `qubo_tabu` at `λ=0, μ=1` reaches NDCG 0.899 at parity
 0.199, against `quota_mmr`'s 0.868 at 0.253. That single point is what prompted the
-5-seed re-test in [Section 2](docs/findings.md#the-operating-point-decides-the-comparison), and it is
+5-seed re-test in [Section 2](#the-operating-point-decides-the-comparison), and it is
 the whole reason the headline claim changed. It is also a good argument for drawing the
 figure before writing the conclusion: the same data, plotted against matched baselines,
 had been sitting in an earlier sweep whose baselines came from a different user sample
@@ -762,7 +777,7 @@ selection has exactly `k` entries, and no comparison of the sampler's energy aga
 greedy baseline on the same BQM. Without those, a run in which the sampler returned an
 arbitrary feasible set would look indistinguishable from a run in which it optimised —
 because the downstream metrics stay plausible either way. That is the substance of the
-warning in [Finding 1](docs/findings.md#the-penalty-encoding-breaks-the-sampler), and it applies to any
+warning in [Finding 1](#the-penalty-encoding-breaks-the-sampler), and it applies to any
 paper in this family, this one included before those checks were added.
 
 **Where this project differs:**
