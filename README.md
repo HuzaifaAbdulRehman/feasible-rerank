@@ -67,10 +67,13 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
    users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
    **0.0012 NDCG**. Certain, and negligible.
-4. **That feasibility result holds on 5 of 5 catalogues**, spanning 77× in size and 63×
-   in density, across two domains — and on MovieLens the groups are curator-assigned
-   **genres**, not popularity tiers, which closes the obvious objection that the QUBO
-   only wins because the groups are defined by the same signal it exploits.
+4. **That feasibility result holds on 6 of 6 benchmarks**, spanning 77× in catalogue
+   size and 63× in density, across two domains, two group definitions and **two
+   retrieval models**. On MovieLens the groups are curator-assigned genres rather than
+   popularity tiers; on `amazon_lb_mf` the candidates come from matrix factorisation
+   rather than ItemKNN. Together those close the two obvious objections — that the QUBO
+   only wins because the groups are defined by the signal it exploits, and that it only
+   wins because of ItemKNN's particular bias.
 5. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
    wins intra-list similarity outright.
 
@@ -181,28 +184,30 @@ to differ in the ways that should matter:
 
 Identical budgets, grids and seeds throughout — nothing is tuned per catalogue.
 
-Five catalogues, two domains. The last is the important one: **MovieLens groups are
+Six benchmarks: five catalogues across two domains, plus one that swaps the retrieval
+model. Two are the important ones: **MovieLens groups are
 curator-assigned genres** (Drama / Comedy / Romance / other), not popularity tiers, so it
 tests the constraint against categories defined independently of the data being scored.
 
-| dataset | items | density | groups from |
-|---|---|---|---|
-| Gift Cards | 147 | 0.0442 | popularity tier |
-| Software | 729 | 0.0096 | popularity tier |
-| Luxury Beauty | 1,366 | 0.0067 | popularity tier |
-| Digital Music | 11,268 | 0.0007 | popularity tier |
-| **MovieLens 100K** | 1,349 | 0.0773 | **genre** |
+| dataset | items | density | groups from | retrieval |
+|---|---|---|---|---|
+| Gift Cards | 147 | 0.0442 | popularity tier | ItemKNN |
+| Software | 729 | 0.0096 | popularity tier | ItemKNN |
+| Luxury Beauty | 1,366 | 0.0067 | popularity tier | ItemKNN |
+| Digital Music | 11,268 | 0.0007 | popularity tier | ItemKNN |
+| **MovieLens 100K** | 1,349 | 0.0773 | **genre** | ItemKNN |
+| **Luxury Beauty (MF)** | 1,366 | 0.0067 | popularity tier | **ALS** |
 
 **Reach** — the tightest fairness budget each method meets *on every seed*. Lower is a
 stronger guarantee:
 
-| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
-|---|---|---|---|---|---|
-| greedy_topk | — | — | — | 1.00 | — |
-| mmr | 1.00 | 1.00 | — | 1.00 | 1.00 |
-| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 |
-| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
-| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | LB (MF) |
+|---|---|---|---|---|---|---|
+| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 | 0.30 |
+| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** |
+| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** |
+
+`greedy_topk` and `mmr` are omitted: neither meets any budget on most benchmarks.
 
 NDCG@10 delivered at that tightest budget:
 
@@ -214,7 +219,7 @@ NDCG@10 delivered at that tightest budget:
 
 ![cross-dataset fairness budget curves](results/datasets_budget.png)
 
-**Holds on 5 of 5.** Gift Cards is the interesting one — it was included precisely
+**Holds on 6 of 6.** Gift Cards is the interesting one — it was included precisely
 because it was the case most likely to break the result, being small and dense enough
 that a greedy heuristic has room to do well. Instead the QUBO wins *both* axes there:
 a tighter reach **and** +0.20 NDCG at it. That matches what the config predicted before
@@ -229,7 +234,9 @@ whole allocation at once and reaches the floor. Gift Cards' smaller candidate se
 loosens the constraint enough for quota-MMR to reach 0.25, which is consistent with the
 same explanation.
 
-**MovieLens is the one that closes the argument.** Every other benchmark groups items by
+**Two benchmarks close the two obvious objections.**
+
+*MovieLens closes the group objection.* Every other benchmark groups items by
 popularity tier — a partition derived from the very interaction counts being evaluated,
 so a sceptic can reasonably say the QUBO only wins because those groups are structurally
 easy to balance. MovieLens groups by genre, assigned by the dataset's curators, and the

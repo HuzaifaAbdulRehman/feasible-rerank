@@ -23,9 +23,11 @@ succeed. Third, under a protocol that tunes every method — baselines included 
 disjoint half of the users, the QUBO's advantage is not accuracy but **feasibility**:
 below a group-exposure requirement of τ ≈ 0.25, no classical reranker tested can satisfy
 the constraint at any setting of its own hyperparameters, and the QUBO can. This holds on
-**five catalogues across two domains** — four Amazon categories spanning 77× in size and
-63× in density, plus MovieLens 100K, where the groups are curator-assigned genres rather
-than popularity tiers.
+**six benchmarks**: four Amazon categories spanning 77x in size and 63x in density,
+MovieLens 100K (a second domain, with curator-assigned genres instead of popularity
+tiers), and one that swaps ItemKNN for matrix factorisation. The last two exist to close
+the objections that the result depends on how groups are defined, or on one retrieval
+model's particular bias. Neither holds.
 
 We also report what the method does *not* buy: at looser fairness requirements it ties
 the strongest baseline on accuracy (a paired test over 200 users puts the difference at
@@ -391,8 +393,10 @@ stronger claim was true of the regime it was measured in and false in general.
 4. **Candidate sets are small** (n=100–200). The scaling question — whether any of this
    survives a catalogue an order of magnitude larger — is now *tractable* thanks to the
    sparse similarity path, but has not been run.
-5. **Five catalogues, four of them Amazon.** MovieLens adds a second domain and the only
-   non-popularity group partition, but breadth beyond retail and film is untested.
+5. **Six benchmarks, but only two domains and two retrieval models.** MovieLens adds a
+   second domain and the only non-popularity group partition; the MF benchmark adds a
+   second retrieval model. Breadth beyond retail and film, and beyond ItemKNN and ALS,
+   is untested.
 6. **No physical quantum hardware.** Everything here is classical or quantum-*inspired*.
 
 ---

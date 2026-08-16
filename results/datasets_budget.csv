@@ -4,6 +4,11 @@ amazon_giftcards,mmr,1.0,0.7971646447469275
 amazon_giftcards,quota_mmr,0.25,0.5540413354339846
 amazon_giftcards,qubo_tabu,0.2,0.7588916761321184
 amazon_giftcards,qubo_feasible,0.2,0.7253225547665426
+amazon_lb_mf,greedy_topk,1.0,1.0
+amazon_lb_mf,mmr,1.0,0.9847282603492915
+amazon_lb_mf,quota_mmr,0.3,0.943495388954196
+amazon_lb_mf,qubo_tabu,0.2,0.9487487010779306
+amazon_lb_mf,qubo_feasible,0.2,0.8880984131718387
 amazon_lb,greedy_topk,,
 amazon_lb,mmr,1.0,0.9886683344828984
 amazon_lb,quota_mmr,0.3,0.9033830698172484
