@@ -173,3 +173,79 @@ class TestIntraListSimilarity:
 
     def test_single_item_list_has_no_pairs(self):
         assert intra_list_similarity(np.zeros((3, 3)), [1]) == 0.0
+
+
+class TestExposureParityGroupCoverage:
+    """The ``n_groups`` argument, and the degeneracy it exists to close.
+
+    Without it the default target is ``k / len(counts)``, where ``counts`` spans only
+    the groups *present among the candidates*. A retrieval model skewed enough to return
+    candidates from a single group therefore gets a target of ``k``, meets it exactly,
+    and scores 0.0 -- a perfect fairness score for the most concentrated list that can
+    possibly be returned. The metric is the one every headline number in this repository
+    is measured against, so that is worth a test rather than a comment.
+
+    Measured impact on the committed benchmarks is small but real: 2 of 80 Luxury Beauty
+    candidate sets and 1 of 80 Digital Music sets are missing a group, and correcting
+    them shifts mean parity by about +0.009 uniformly across methods -- enough to matter
+    in principle, not enough to move any reported reach. The committed results therefore
+    do not pass ``n_groups``; see docs/limitations.md.
+    """
+
+    def test_single_group_list_is_not_perfect_fairness(self):
+        """The degeneracy itself: 1.5 is the maximum at k=10 over 4 groups, not 0.0."""
+        groups = np.zeros(10, dtype=int)
+        selection = list(range(10))
+
+        assert exposure_parity(groups, selection) == pytest.approx(0.0)
+        assert exposure_parity(groups, selection, None, 4) == pytest.approx(1.5)
+
+    def test_absent_groups_still_owe_their_share(self):
+        """Two of four groups present, list split evenly between them. The two missing
+        groups each contribute a full k/|C| deviation."""
+        groups = np.array([0] * 5 + [1] * 5)
+        selection = [0, 1, 5, 6]
+
+        # present: |2 - 1| + |2 - 1| = 2 ; absent: 2 * 1 = 2 ; total 4 / k=4
+        assert exposure_parity(groups, selection, None, 4) == pytest.approx(1.0)
+
+    def test_default_reproduces_the_previous_behaviour_exactly(self):
+        """Load-bearing: every committed result was produced without this argument, so
+        omitting it must not silently redefine the metric."""
+        rng = np.random.default_rng(0)
+        groups = rng.integers(0, 4, size=40)
+        selection = sorted(rng.choice(40, 10, replace=False).tolist())
+
+        assert exposure_parity(groups, selection) == exposure_parity(
+            groups, selection, None, None
+        )
+
+    def test_agrees_with_the_legacy_path_when_no_group_is_missing(self):
+        """The common case. If every group appears among the candidates the argument
+        changes nothing, which is why the committed results are unaffected."""
+        groups = np.array([0, 1, 2, 3] * 10)
+        selection = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+        assert exposure_parity(groups, selection, None, 4) == pytest.approx(
+            exposure_parity(groups, selection)
+        )
+
+    def test_explicit_targets_take_precedence(self):
+        groups = np.array([0] * 5 + [1] * 5)
+        selection = [0, 1, 2, 5, 6]
+
+        assert exposure_parity(
+            groups, selection, {0: 3.0, 1: 2.0}, 4
+        ) == pytest.approx(0.0)
+
+    def test_rejects_an_n_groups_smaller_than_the_sample(self):
+        """A caller confusing the catalogue's group count with the sample's would
+        otherwise get a plausible-looking wrong number: a balanced list scores 1.0."""
+        groups = np.array([0, 1, 2, 3] * 5)
+        selection = [0, 1, 2, 3]
+
+        with pytest.raises(ValueError, match="smaller than"):
+            exposure_parity(groups, selection, None, 2)
+
+    def test_empty_selection_is_still_zero(self):
+        assert exposure_parity(np.array([0, 1, 2, 3]), [], None, 4) == 0.0

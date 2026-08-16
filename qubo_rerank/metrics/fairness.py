@@ -41,12 +41,38 @@ def category_coverage(groups: np.ndarray, selection: Sequence[int]) -> float:
 
 
 def exposure_parity(
-    groups: np.ndarray, selection: Sequence[int], targets: dict[int, float] | None = None
+    groups: np.ndarray,
+    selection: Sequence[int],
+    targets: dict[int, float] | None = None,
+    n_groups: int | None = None,
 ) -> float:
     """Mean absolute deviation from target exposure, normalised by list length.
 
     ``0.0`` is perfect parity. Larger is worse. Normalising by ``k`` keeps the value
     comparable across list sizes.
+
+    Args:
+        groups: group label of each *candidate*, indexed as ``selection`` indexes it.
+        selection: candidate indices making up the returned list.
+        targets: explicit per-group targets; overrides ``n_groups``.
+        n_groups: how many groups the **catalogue** has. Pass this whenever ``groups``
+            is a filtered view of a larger catalogue, which it always is after
+            retrieval.
+
+    ``n_groups`` exists because of a degeneracy an audit found downstream. Without it
+    the default target is ``k / len(counts)``, where ``counts`` spans only the groups
+    *present among the candidates*. A retrieval model biased enough to return
+    candidates from a single group therefore gets a target of ``k``, meets it exactly,
+    and scores ``0.0`` -- perfect fairness for the most concentrated list that can be
+    returned. Measured downstream: an unreranked popularity recommender scored exactly
+    ``0.0000`` on two of five catalogues.
+
+    With ``n_groups`` supplied, groups absent from the candidate set keep their share
+    of the target and contribute their full deviation, so the same list scores ``1.5``
+    at ``k = 10`` over four groups -- the maximum, which is the right answer.
+
+    Optional, defaulting to the previous behaviour, so that existing callers and
+    already-committed results are not silently redefined. New callers should pass it.
     """
     groups = np.asarray(groups).ravel()
     counts = group_counts(groups, selection)
@@ -54,8 +80,30 @@ def exposure_parity(
     if k == 0:
         return 0.0
 
+    if n_groups is not None and n_groups < len(counts):
+        # Refuse rather than return a number. `n_groups` is the catalogue's group count,
+        # so it can never be smaller than the number of groups observed among the
+        # candidates; a caller passing one that is has confused the two. Left unchecked
+        # the function quietly inflates every target and returns, for instance, 1.0 for
+        # a perfectly balanced list -- a wrong answer that looks like a real score.
+        raise ValueError(
+            f"n_groups={n_groups} is smaller than the {len(counts)} groups present in "
+            "the candidate set; it must count the catalogue's groups, not the sample's"
+        )
+
     if targets is None:
-        targets = {g: k / len(counts) for g in counts}
+        # `len(counts)` counts groups among the candidates; `n_groups` counts them in
+        # the catalogue. They differ exactly when retrieval filtered a group out
+        # entirely, which is the case this parameter exists to handle.
+        divisor = n_groups if n_groups else len(counts)
+        targets = {g: k / divisor for g in counts}
+
+        if n_groups and n_groups > len(counts):
+            # A group with no candidates still owes its share of the target. Omitting
+            # those terms is precisely what let a single-group list score as perfect.
+            missing = n_groups - len(counts)
+            present_deviation = sum(abs(counts[g] - targets[g]) for g in counts)
+            return float((present_deviation + missing * (k / n_groups)) / k)
 
     deviation = sum(abs(counts[g] - targets.get(g, 0.0)) for g in counts)
     return float(deviation / k)

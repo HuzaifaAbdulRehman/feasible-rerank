@@ -34,6 +34,10 @@ certified on the evaluation half (`feasible_eval`).
 
 ## Outstanding
 
+**`exposure_parity` has a stricter mode the committed results do not use.** The default target is `k / |groups present among the candidates|`. When retrieval returns no items at all from some group, that group drops out of the denominator, and in the limit a list drawn entirely from one group scores 0.0 -- a perfect fairness score for the most concentrated list possible. Passing `n_groups` counts the catalogue's groups instead, so absent groups keep their share of the target and the same list scores 1.5, the maximum.
+
+The committed benchmarks do not pass it, deliberately. Measured across the suite, 2 of 80 Luxury Beauty candidate sets and 1 of 80 Digital Music sets are missing a group; the other catalogues have none. Correcting them shifts mean exposure parity by about +0.009, and by nearly the same amount for every method -- so no reported reach changes and no ordering moves. Regenerating the whole suite for a uniform offset that alters no conclusion was not judged a good trade. New work should pass `n_groups`; a retrieval model more skewed than ItemKNN would trigger this far more often.
+
 **`qubo_tabu` stops on a wall clock, so its quality is hardware-dependent.**
 `dwave-samplers`' TabuSampler defaults to a 20 ms timeout and every published number here
 used that default. On a faster machine it searches more and may score better; on a slower
