@@ -128,6 +128,121 @@ class QuotaMMR:
         return SolveResult(selection=selected, stats=stats)
 
 
+class BalancedQuota:
+    """Largest-remainder apportionment, then greedy MMR inside each group.
+
+    **This is the baseline that refutes the naive reading of the feasibility claim, and
+    it exists because an independent audit wrote it in fifteen lines.** :class:`QuotaMMR`
+    enforces ``ceil(k / |C|)`` as an *upper* bound only, with no lower bound and no
+    remainder rule, so it can finish at 3/3/3/1 over four groups and has no way back --
+    exposure parity 0.30 against an arithmetic floor of 0.20. That is a defect of that
+    particular heuristic, not a property of classical reranking, and reporting it as the
+    latter would have been the most serious error in this project.
+
+    The fix is textbook apportionment. Give group ``c`` a base quota of
+    ``floor(target_c)``, then hand the ``k - sum(floor)`` leftover slots to the groups
+    with the largest fractional parts. That allocation provably minimises
+    ``sum_c |quota_c - target_c|``, which *is* the exposure-parity numerator, so this
+    baseline attains the parity floor by construction whenever each group has enough
+    candidates -- deterministically, on every user, in milliseconds.
+
+    Two details keep it honest rather than strawmanned in the other direction:
+
+    * **Ties are broken by relevance.** With equal targets every fractional part is the
+      same, so the choice of which groups get an extra slot is free on parity and is
+      spent on relevance instead.
+    * **It reads the target vector.** Unlike :class:`QuotaMMR` it handles proportional
+      targets, so the expressiveness argument has to be made against *this*, not against
+      the weaker heuristic.
+
+    Where the QUBO still earns its compute is the pairwise term: this baseline fills each
+    group greedily, which is optimal for a separable objective and not for one containing
+    ``lam * sum s_ij x_i x_j``. Set ``lam > 0`` and the two diverge.
+    """
+
+    name = "balanced_quota"
+
+    def __init__(self, lam: float = 0.5) -> None:
+        self.lam = lam
+
+    def solve(self, problem) -> SolveResult:
+        stats: dict = {"lam": self.lam}
+        if problem.groups is None:
+            raise ValueError("BalancedQuota requires group labels")
+
+        rel = _unit_scale(np.asarray(problem.relevance, dtype=float))
+        sim = _unit_scale(np.asarray(problem.similarity, dtype=float))
+        groups = np.asarray(problem.groups).ravel()
+        k = problem.k
+        uniq = np.unique(groups)
+
+        if problem.targets is not None:
+            targets = np.array([float(problem.targets[int(g)]) for g in uniq])
+        else:
+            targets = np.full(len(uniq), k / len(uniq), dtype=float)
+
+        with timed(stats, "solve_time"):
+            # A group can never supply more items than the candidate set holds of it.
+            # Ignoring that is what made a first version of this baseline miss the floor
+            # on the users whose retrieval happened to skew -- it allocated slots that
+            # could not be filled, then spilled them arbitrarily.
+            capacity = np.array([int(np.sum(groups == g)) for g in uniq])
+
+            base = np.minimum(np.floor(targets).astype(int), capacity)
+            quota = base.copy()
+
+            # Hand out the remaining slots one at a time, each to the group currently
+            # furthest below its target and still able to take one. Greedy on the
+            # largest shortfall is exactly largest-remainder when capacity does not
+            # bind, and degrades gracefully into the best attainable split when it does.
+            best_in_group = np.array([
+                rel[groups == g].max() if np.any(groups == g) else -np.inf for g in uniq
+            ])
+            for _ in range(int(k - quota.sum())):
+                room = quota < capacity
+                if not room.any():
+                    break
+                shortfall = np.where(room, targets - quota, -np.inf)
+                # Ties on shortfall are free in parity terms, so spend them on relevance.
+                j = int(np.lexsort((-best_in_group, -shortfall))[0])
+                quota[j] += 1
+
+            selected: list[int] = []
+            for j, g in enumerate(uniq):
+                pool = [int(i) for i in np.flatnonzero(groups == g)]
+                for _ in range(int(quota[j])):
+                    if not pool:
+                        break
+                    scores = [
+                        (1.0 - self.lam) * rel[i]
+                        - self.lam * max((sim[i, s] for s in selected), default=0.0)
+                        for i in pool
+                    ]
+                    pick = pool[int(np.argmax(scores))]
+                    selected.append(pick)
+                    pool.remove(pick)
+
+            # A group short of candidates leaves the list under-length; top it up from
+            # whatever is left rather than return fewer than k, which would silently
+            # break every comparison against fixed-k methods.
+            if len(selected) < k:
+                taken = set(selected)
+                for i in np.argsort(-rel, kind="stable"):
+                    if int(i) not in taken:
+                        selected.append(int(i))
+                        if len(selected) == k:
+                            break
+
+            # NDCG here is position-weighted, so the list is returned best-first. Any
+            # real reranker presents it that way, and leaving it in group order would
+            # penalise this baseline for a presentation choice rather than a decision.
+            selected = sorted(selected[:k], key=lambda i: -rel[i])
+
+        stats["n_selected"] = len(selected)
+        stats["quota"] = {int(g): int(q) for g, q in zip(uniq, quota, strict=True)}
+        return SolveResult(selection=selected, stats=stats)
+
+
 def _unit_scale(a: np.ndarray) -> np.ndarray:
     lo, hi = float(np.min(a)), float(np.max(a))
     if hi - lo <= 0.0:

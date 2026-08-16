@@ -243,8 +243,8 @@ class TestEndToEnd:
         cfg = tiny_cfg()
         per_user = collect_per_user(cfg, build_benchmark(cfg))
 
-        assert set(per_user["method"]) == {"greedy_topk", "mmr", "quota_mmr", "qubo_feasible"}
-        assert len(per_user) == 4 * 10
+        assert set(per_user["method"]) == {"greedy_topk", "mmr", "quota_mmr", "balanced_quota", "qubo_feasible"}
+        assert len(per_user) == 5 * 10
         assert per_user.groupby("method")["user"].nunique().eq(10).all()
 
     def test_greedy_is_detectably_more_accurate_than_quota_mmr(self):

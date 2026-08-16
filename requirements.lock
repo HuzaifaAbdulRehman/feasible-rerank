@@ -1,0 +1,40 @@
+# Exact versions every published number in this repository was produced with.
+#
+# `requirements.txt` states the *compatible* range, which is what a reader installing the
+# project should use. This file states what was actually on the machine, which is what a
+# reader trying to reproduce a specific figure needs -- and for a project whose argument
+# is reproducibility, the difference matters. An independent audit noted that every line
+# of requirements.txt was `>=`, no lockfile existed, and CI therefore installed whatever
+# happened to be current on the day.
+#
+# Install with:
+#     pip install -r requirements.lock
+#
+# Recorded on Python 3.10.11, Windows 10. Two of these are load-bearing beyond their
+# version number:
+#
+#   dwave-samplers  TabuSampler's default stopping rule is a 20 ms wall clock, so its
+#                   solution *quality* depends on the machine as well as the version.
+#                   See qubo_rerank/solvers/tabu.py.
+#   highspy         supplies the HiGHS backend that experiments/exact.py selects. Absent
+#                   it, pulp silently falls back to nothing and the exact baseline fails
+#                   rather than skipping.
+
+dimod==0.12.22
+dwave-neal==0.6.0
+dwave-samplers==1.8.0
+
+numpy==2.2.6
+scipy==1.15.3
+pandas==2.3.3
+pyyaml==6.0.3
+
+codecarbon==3.3.0
+matplotlib==3.10.9
+
+pulp==3.3.2
+highspy==1.15.1
+
+pytest==9.1.1
+coverage==7.15.4
+ruff==0.16.3

@@ -45,6 +45,11 @@ STYLE = {
     "greedy_topk": ("black", "X", "greedy top-k"),
     "mmr": ("dimgray", "P", "MMR"),
     "quota_mmr": ("darkgreen", "*", "quota-MMR"),
+    # The apportionment baseline. Absent from this dict it was silently dropped from
+    # every printed table and plot while still counting in the verdict lines -- which is
+    # the worst of both, since the verdict then says "best baseline 0.20" and the table
+    # above it shows no baseline reaching 0.20.
+    "balanced_quota": ("seagreen", "^", "balanced quota"),
     "qubo_sa": ("tab:red", "o", "QUBO + neal SA"),
     "qubo_tabu": ("tab:orange", "s", "QUBO + tabu"),
     "qubo_feasible": ("tab:blue", "D", "QUBO + swap annealing"),
@@ -53,9 +58,9 @@ STYLE = {
 #: Printed alongside each dataset so the reader can see what was varied. Density and
 #: catalogue size are the two properties the finding could plausibly depend on.
 DATASET_NOTES = {
-    "amazon_lb": "Luxury Beauty  1,366 items  density 0.0067  hit rate 0.49",
-    "amazon_software": "Software  729 items  density 0.0096  hit rate 0.28",
-    "amazon_giftcards": "Gift Cards  147 items  density 0.0442  n=100 candidates",
+    "amazon_lb": "Luxury Beauty  1,366 items  density 0.0049  hit rate 0.49",
+    "amazon_software": "Software  729 items  density 0.0078  hit rate 0.28",
+    "amazon_giftcards": "Gift Cards  147 items  density 0.0373  n=100 candidates",
 }
 
 
@@ -66,9 +71,16 @@ def reach(frame: pd.DataFrame) -> pd.DataFrame:
     constraint, and a method that meets it two runs in three has not met it. NaN means
     the method never met any budget in the grid.
     """
+    # `feasible_eval` -- did the chosen configuration meet the budget on users it was
+    # never tuned on -- is the honest basis for this number. `feasible` records only
+    # that the tuning procedure believed it would, and the two disagree on 15 rows.
+    # Older CSVs predate the column; fall back so they still load, but note that a reach
+    # computed from them is a statement about tuning users.
+    column = "feasible_eval" if "feasible_eval" in frame.columns else "feasible"
+
     rows = []
     for (dataset, method), block in frame.groupby(["dataset", "method"], sort=False):
-        met = block.groupby("tau")["feasible"].all()
+        met = block.groupby("tau")[column].all()
         feasible_taus = met[met].index
         rows.append(
             {

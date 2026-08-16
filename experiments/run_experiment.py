@@ -51,6 +51,7 @@ from qubo_rerank.metrics.fairness import (
 from qubo_rerank.metrics.relevance import ndcg_at_k, recall_at_k
 from qubo_rerank.solvers import (
     MMR,
+    BalancedQuota,
     FeasibleAnnealing,
     GreedyTopK,
     QuotaMMR,
@@ -69,6 +70,10 @@ def build_solvers(cfg: dict) -> list:
         solvers.append(MMR(lam=s.get("mmr_lam", 0.5)))
     if s.get("quota_mmr", True):
         solvers.append(QuotaMMR(lam=s.get("mmr_lam", 0.5)))
+    if s.get("balanced_quota", True):
+        # The apportionment baseline. On by default: it is the strongest
+        # classical fairness method here, so omitting it would flatter the QUBO.
+        solvers.append(BalancedQuota(lam=s.get("mmr_lam", 0.5)))
     if s.get("qubo_sa", True):
         solvers.append(
             SimulatedAnnealing(
@@ -454,10 +459,16 @@ def main() -> None:
         wanted = set(args.solver)
         # build_solvers reads boolean switches out of cfg['solvers']; turning the
         # unwanted ones off is what keeps a restricted run from paying for qubo_sa.
-        for name in ("greedy", "mmr", "quota_mmr", "qubo_sa", "qubo_tabu", "qubo_feasible"):
+        #
+        # The switch is written whether or not the config already mentions it. Guarding
+        # on `isinstance(..., bool)` meant a solver the config omitted kept its default,
+        # so `--solver qubo_feasible` silently also ran every defaulted-on baseline --
+        # invisible until `balanced_quota` was added and started appearing in runs that
+        # had asked for one solver.
+        for name in ("greedy", "mmr", "quota_mmr", "balanced_quota", "qubo_sa",
+                     "qubo_tabu", "qubo_feasible"):
             key = "greedy_topk" if name == "greedy" else name
-            if isinstance(cfg["solvers"].get(name), bool):
-                cfg["solvers"][name] = key in wanted or name in wanted
+            cfg["solvers"][name] = key in wanted or name in wanted
 
     if args.repeats > 1:
         print(f"running {args.repeats} repeats of {args.config}\n")

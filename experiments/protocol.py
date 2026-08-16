@@ -67,6 +67,7 @@ from benchmarks.loader import Benchmark
 from experiments.run_experiment import build_benchmark, evaluate_solver
 from qubo_rerank.solvers import (
     MMR,
+    BalancedQuota,
     FeasibleAnnealing,
     GreedyTopK,
     QuotaMMR,
@@ -165,6 +166,11 @@ def build_configurables(
             name="quota_mmr",
             grid=[{"mmr_lam": v} for v in mmr_grid],
             make=lambda p: QuotaMMR(lam=p["mmr_lam"]),
+        ),
+        Configurable(
+            name="balanced_quota",
+            grid=[{"mmr_lam": v} for v in mmr_grid],
+            make=lambda p: BalancedQuota(lam=p["mmr_lam"]),
         ),
         Configurable(
             name="qubo_sa",
@@ -296,12 +302,29 @@ def run_protocol(
                     )
                 scored = scored_cache[key]
 
+                # Two distinct questions, and conflating them was a real defect.
+                #
+                #   `feasible`      -- could the *tuning* procedure find a configuration
+                #                      it believed met the budget? Selection must happen
+                #                      here, on tuning users only, or the split leaks.
+                #   `feasible_eval` -- did that configuration actually meet the budget on
+                #                      users it was never tuned on? This is the honest
+                #                      answer to "does the method meet the requirement",
+                #                      and it is what `reach` is computed from.
+                #
+                # They disagree on 15 rows across the benchmark suite: 8 configurations
+                # certified on tuning data violate the budget on held-out users, and 7
+                # flagged infeasible actually meet it. Reporting the tuning flag as
+                # though it were a guarantee overstated what the protocol establishes.
+                feasible_eval = bool(scored["exposure_parity"] <= tau + 1e-12)
+
                 rows.append(
                     {
                         "seed": seed,
                         "tau": tau,
                         "method": c.name,
                         "feasible": chosen.feasible,
+                        "feasible_eval": feasible_eval,
                         "n_considered": chosen.n_considered,
                         **{f"chosen_{k}": v for k, v in chosen.params.items()},
                         "tune_ndcg": chosen.tune_ndcg,

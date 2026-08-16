@@ -3,8 +3,10 @@
 # Download once:
 #   curl --create-dirs -o data/amazon_Gift_Cards/Gift_Cards.csv #     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Gift_Cards.csv
 #
-# After 5-core filtering: 2,960 interactions, 456 users, 147 items, density 0.0442 --
-# 6.6x denser than Luxury Beauty over a catalogue an order of magnitude smaller.
+# After 5-core filtering: 2,960 interactions, 456 users, 147 items, density 0.0373 --
+# 7.6x denser than Luxury Beauty over a catalogue an order of magnitude smaller.
+# (Density is measured on the deduplicated training matrix; repeat purchases are
+# collapsed, which is why this is lower than the pre-fix figure of 0.0442.)
 #
 # The candidate set is 100 rather than 200 because the catalogue holds only 147 items;
 # retrieving 200 would return the whole catalogue and turn the "rerank a shortlist" task

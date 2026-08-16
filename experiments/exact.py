@@ -168,6 +168,30 @@ def main() -> None:
             print(f"  n={n:<4} seed {repeat}  exact  {status:<10} "
                   f"energy={exact_energy:+.6f}  {seconds:7.2f}s")
 
+            # A random feasible k-subset: the "no optimisation at all" reference.
+            #
+            # Without it the only normalised statement available is heuristic/optimum,
+            # and that is a quotient of two *signed* energies whose zero is arbitrary --
+            # add a constant to the objective and the percentage moves. It is not merely
+            # imprecise: at n=20 the optimum here is positive, so the same formula yields
+            # 146.6%, which is why that column was never quoted. Anchoring on random
+            # instead gives (random - energy) / (random - optimum), a ratio of
+            # *differences*, which is invariant to the offset. optimality.py already
+            # scores this way; this makes the exact comparison consistent with it.
+            rng = np.random.default_rng(repeat)
+            random_energy = float(np.mean([
+                objective_energy(
+                    instance,
+                    sorted(rng.choice(instance.n, args.k, replace=False).tolist()),
+                )
+                for _ in range(200)
+            ]))
+            rows.append({
+                "n": n, "repeat": repeat, "method": "random_feasible",
+                "energy": random_energy, "seconds": 0.0,
+                "status": "reference", "feasible": True,
+            })
+
             for solver in (
                 GreedyTopK(),
                 SimulatedAnnealing(num_reads=100, seed=repeat),
@@ -217,6 +241,24 @@ def main() -> None:
             gap = heuristic["energy"].mean() - at_largest["energy"].mean()
             print(f"qubo_feasible gap to proven optimum at n={largest}: {gap:+.8f} "
                   f"in {heuristic['seconds'].mean():.2f}s")
+
+        # Offset-invariant scoring, per size. Reported instead of "% of the optimum",
+        # which is a ratio of signed energies and therefore not a percentage of anything.
+        print("\n% of the available improvement recovered (random = 0%, optimum = 100%)")
+        sizes = sorted(proven["n"].unique())
+        print(f"{'method':<18}" + "".join(f"{n:>9}" for n in sizes))
+        for name in ["greedy_topk", "qubo_sa", "qubo_tabu", "qubo_feasible"]:
+            cells = ""
+            for n in sizes:
+                opt = proven[proven.n == n]["energy"].mean()
+                rnd = frame[(frame.n == n) & (frame.method == "random_feasible")]
+                got = frame[(frame.n == n) & (frame.method == name)]
+                if not len(rnd) or not len(got) or rnd["energy"].mean() == opt:
+                    cells += f"{'--':>9}"
+                    continue
+                span = rnd["energy"].mean() - opt
+                cells += f"{100 * (rnd['energy'].mean() - got['energy'].mean()) / span:>8.1f}%"
+            print(f"{name:<18}{cells}")
     unsolved = exact[exact.status != "Optimal"]
     if len(unsolved):
         print(f"Not proven optimal within {args.time_limit:.0f}s at n="

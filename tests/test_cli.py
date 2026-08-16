@@ -72,7 +72,7 @@ class TestRunExperimentCLI:
 
         assert result.returncode == 0, result.stderr
         frame = pd.read_csv(out)
-        assert set(frame["method"]) == {"greedy_topk", "mmr", "quota_mmr", "qubo_feasible"}
+        assert set(frame["method"]) == {"greedy_topk", "mmr", "quota_mmr", "balanced_quota", "qubo_feasible"}
         assert {"ndcg@k", "exposure_parity", "gini", "seconds"} <= set(frame.columns)
 
     def test_solver_flag_restricts_the_run(self, config, tmp_path):
@@ -142,7 +142,7 @@ class TestSweepCLI:
         assert sorted(grid["lam"].unique()) == [0.0, 4.0]
 
         baselines = pd.read_csv(out.with_name(f"{out.stem}_baselines.csv"))
-        assert set(baselines["method"]) == {"greedy_topk", "mmr", "quota_mmr"}
+        assert set(baselines["method"]) == {"greedy_topk", "mmr", "quota_mmr", "balanced_quota"}
 
     def test_unknown_solver_is_rejected(self, config, tmp_path):
         result = run_script(

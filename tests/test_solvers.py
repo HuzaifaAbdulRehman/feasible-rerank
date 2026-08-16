@@ -16,10 +16,12 @@ from qubo_rerank.metrics.relevance import ndcg_at_k
 from qubo_rerank.problem import RerankInstance
 from qubo_rerank.solvers import (
     MMR,
+    BalancedQuota,
     FeasibleAnnealing,
     GreedyTopK,
     QuotaMMR,
     SimulatedAnnealing,
+    SimulatedBifurcation,
     TabuSearch,
 )
 
@@ -361,3 +363,137 @@ class TestTabuStoppingRule:
         many = TabuSearch(seed=0, num_restarts=100, timeout=None).solve(instance)
 
         assert many.stats["energy"] <= few.stats["energy"] + 1e-9
+
+
+class TestBalancedQuota:
+    """The apportionment baseline, and the claim it is here to police.
+
+    An independent audit refuted this project's original headline -- "no classical
+    reranker can satisfy the constraint at any setting of its own hyperparameters" -- by
+    writing this baseline in fifteen lines. QuotaMMR caps each group at
+    ``ceil(k / |C|)`` with no lower bound and no remainder rule, so it can finish 3/3/3/1
+    over four groups and never recover. That is a defect of one heuristic, not a property
+    of classical reranking, and these tests exist so the distinction cannot rot again.
+    """
+
+    @staticmethod
+    def _instance(n=40, k=10, n_groups=4, lam=0.0, mu=1.0, seed=0):
+        rng = np.random.default_rng(seed)
+        sim = rng.random((n, n)) * 0.3
+        sim = (sim + sim.T) / 2
+        np.fill_diagonal(sim, 1.0)
+        return RerankInstance(
+            relevance=np.linspace(1.0, 0.1, n),
+            similarity=sim,
+            k=k,
+            groups=np.arange(n) % n_groups,
+            lam=lam,
+            mu=mu,
+        )
+
+    def test_reaches_the_arithmetic_parity_floor(self):
+        """k=10 over 4 equal groups cannot beat 0.20; this must attain it."""
+        from qubo_rerank.metrics.fairness import exposure_parity
+
+        inst = self._instance()
+        sel = BalancedQuota(lam=0.0).solve(inst).selection
+
+        assert exposure_parity(inst.groups, sel, None) == pytest.approx(0.20)
+
+    def test_beats_quota_mmr_on_parity(self):
+        """The whole point: the upper-bound-only heuristic does not reach the floor."""
+        from qubo_rerank.metrics.fairness import exposure_parity
+        from qubo_rerank.solvers import QuotaMMR
+
+        inst = self._instance()
+        bq = exposure_parity(inst.groups, BalancedQuota(lam=0.0).solve(inst).selection, None)
+        qm = exposure_parity(inst.groups, QuotaMMR(lam=0.0).solve(inst).selection, None)
+
+        assert bq <= qm
+
+    def test_honours_a_proportional_target_vector(self):
+        """QuotaMMR cannot express these at all; this baseline must, or the
+        expressiveness argument would be made against a strawman."""
+        from qubo_rerank.metrics.fairness import exposure_parity
+
+        inst = self._instance()
+        inst.targets = {0: 4.0, 1: 3.0, 2: 2.0, 3: 1.0}
+        sel = BalancedQuota(lam=0.0).solve(inst).selection
+
+        counts = np.bincount(np.asarray(inst.groups)[sel], minlength=4)
+        assert counts.tolist() == [4, 3, 2, 1]
+        assert exposure_parity(inst.groups, sel, inst.targets) == pytest.approx(0.0)
+
+    def test_returns_exactly_k_even_when_a_group_is_too_small(self):
+        """Capacity binds: a group with fewer candidates than its quota must not
+        produce a short list, which would silently break every fixed-k comparison."""
+        inst = self._instance(n=20, k=10, n_groups=4)
+        groups = np.array([0] * 17 + [1, 2, 3])
+        inst.groups = groups
+
+        sel = BalancedQuota(lam=0.0).solve(inst).selection
+
+        assert len(set(sel)) == inst.k
+
+    def test_is_deterministic(self):
+        inst = self._instance()
+
+        a = BalancedQuota(lam=0.5).solve(inst).selection
+        b = BalancedQuota(lam=0.5).solve(inst).selection
+
+        assert a == b
+
+    def test_requires_groups(self):
+        inst = self._instance()
+        inst.groups = None
+
+        with pytest.raises(ValueError, match="requires group labels"):
+            BalancedQuota().solve(inst)
+
+
+class TestCrossSolverEnergyComparability:
+    """Every solver must report ``stats["energy"]`` on the same scale.
+
+    ``qubo_sb`` computed ``h @ x + 0.5 x'Jx`` and omitted the BQM's constant offset,
+    while every other solver surfaces ``sampleset.first.energy`` or ``bqm.energy(...)``,
+    both of which include it. On a 30-item instance the penalty term's offset is 2.76
+    against an objective spanning hundredths, so the reported energies were not merely
+    imprecise -- they were incomparable, and a test asserted the offset-free formula and
+    therefore enforced the discrepancy rather than catching it.
+    """
+
+    @staticmethod
+    def _instance(n=24, k=6, n_groups=3, seed=3):
+        rng = np.random.default_rng(seed)
+        sim = rng.random((n, n)) * 0.4
+        sim = (sim + sim.T) / 2
+        np.fill_diagonal(sim, 1.0)
+        return RerankInstance(
+            relevance=rng.random(n), similarity=sim, k=k,
+            groups=np.arange(n) % n_groups, lam=1.0, mu=1.0,
+        )
+
+    def _bqm_energy(self, instance, selection):
+        rp = build_problem(
+            relevance=instance.relevance, similarity=instance.similarity, k=instance.k,
+            groups=instance.groups, lam=instance.lam, mu=instance.mu,
+            targets=instance.targets,
+        )
+        chosen = set(int(i) for i in selection)
+        return rp.bqm.energy({i: (1 if i in chosen else 0) for i in range(instance.n)})
+
+    @pytest.mark.parametrize("factory", [
+        lambda: TabuSearch(num_reads=5, seed=0),
+        lambda: SimulatedAnnealing(num_reads=20, seed=0),
+        lambda: FeasibleAnnealing(num_restarts=4, num_sweeps=60, seed=0),
+        lambda: SimulatedBifurcation(num_restarts=3, num_steps=200, seed=0),
+    ])
+    def test_reported_energy_matches_the_bqm(self, factory):
+        instance = self._instance()
+        solver = factory()
+
+        result = solver.solve(instance)
+
+        assert result.stats["energy"] == pytest.approx(
+            self._bqm_energy(instance, result.selection), abs=1e-6
+        )

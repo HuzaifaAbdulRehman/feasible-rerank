@@ -137,7 +137,24 @@ def interaction_matrix(
     Returns:
         ``(matrix, user_index, item_ids)`` where ``user_index`` maps raw user id to
         row, and ``item_ids[j]`` is the raw item id of column ``j``.
+
+    **Repeat interactions are collapsed first, and that is load-bearing.**
+    ``scipy.sparse.csr_matrix`` *sums* duplicate coordinates, so a user who bought the
+    same item twice previously contributed a 2 to a matrix documented as binary. On
+    Amazon Luxury Beauty 18.1% of training rows were such duplicates and the largest
+    cell reached 122.0. Nothing downstream raised: the cosine similarity silently became
+    a count-weighted inner product rather than the shrunk cosine over implicit feedback
+    the docstring promises, and ``popularity`` -- which defines the popularity tiers used
+    as fairness groups on most benchmarks -- counted repeat purchases rather than
+    distinct interactions.
+
+    The most recent row per (user, item) is kept, matching the temporal convention
+    :func:`leave_one_out` already uses. That makes ``binary=True`` genuinely 0/1, and
+    ``binary=False`` the latest rating rather than the sum of every rating a user ever
+    left on one product.
     """
+    train = train.drop_duplicates(subset=["user_id", "item_id"], keep="last")
+
     users = train.user_id.astype("category")
     items = train.item_id.astype("category")
 

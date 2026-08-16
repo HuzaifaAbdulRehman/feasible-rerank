@@ -177,11 +177,16 @@ class TestBuildSolvers:
     def test_config_switches_select_solvers(self):
         names = {s.name for s in build_solvers(tiny_cfg())}
 
-        assert names == {"greedy_topk", "mmr", "qubo_feasible"}
+        # balanced_quota is on by default, like the other classical baselines. It was
+        # added after an audit showed the feasibility claim rested on QuotaMMR's
+        # remainder defect rather than on any property of classical reranking, so
+        # leaving it off by default would reintroduce exactly that error.
+        assert names == {"greedy_topk", "mmr", "balanced_quota", "qubo_feasible"}
 
     def test_disabling_everything_yields_nothing(self):
         cfg = tiny_cfg()
-        for key in ("greedy", "mmr", "quota_mmr", "qubo_sa", "qubo_tabu", "qubo_feasible"):
+        for key in ("greedy", "mmr", "quota_mmr", "balanced_quota", "qubo_sa",
+                    "qubo_tabu", "qubo_feasible"):
             cfg["solvers"][key] = False
 
         assert build_solvers(cfg) == []
@@ -199,7 +204,9 @@ class TestRunEndToEnd:
             "intra_list_sim", "catalogue_coverage", "gini", "seconds",
         }
         assert required <= set(frame.columns)
-        assert len(frame) == 3
+        # Derived from the registry rather than hardcoded: adding a baseline is a
+        # legitimate change, and a literal here turns that into a spurious failure.
+        assert len(frame) == len(build_solvers(tiny_cfg()))
 
     def test_every_solver_returns_exactly_k(self):
         """The contract the whole formulation exists to enforce, checked end to end."""
@@ -247,7 +254,7 @@ class TestRunRepeats:
         per_repeat, summary = run_repeats(tiny_cfg(), repeats=3)
 
         assert sorted(per_repeat["seed"].unique().tolist()) == [0, 1, 2]
-        assert len(per_repeat) == 9
+        assert len(per_repeat) == 3 * len(build_solvers(tiny_cfg()))
         assert ("ndcg@k", "std") in summary.columns
 
     def test_resampling_actually_changes_the_benchmark(self):

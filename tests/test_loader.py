@@ -592,3 +592,70 @@ class TestGrouping:
     def test_unknown_targets_mode_is_rejected(self, ratings_csv):
         with pytest.raises(ValueError, match="targets_mode must be"):
             load_benchmark(ratings_csv, n_users=5, targets_mode="uniform")
+
+
+class TestRepeatInteractions:
+    """Regression tests for a silent data-pipeline defect.
+
+    ``scipy.sparse.csr_matrix`` sums duplicate coordinates. A user who bought the same
+    item twice therefore contributed a 2 to a matrix the docstring calls binary, and on
+    Amazon Luxury Beauty 18.1% of training rows were such duplicates, with the largest
+    cell reaching 122.0. Nothing raised: the cosine similarity quietly became a
+    count-weighted inner product, and the popularity tiers used as fairness groups
+    counted repeat purchases instead of distinct interactions.
+
+    The existing RecBole oracle test could not catch this -- it feeds the *output* of
+    ``interaction_matrix`` to both implementations, so it verifies the similarity formula
+    and is blind to how the matrix was built.
+    """
+
+    @pytest.fixture
+    def repeated(self) -> pd.DataFrame:
+        """One user who bought the same item three times, plus ordinary rows."""
+        return frame([
+            ("u1", "i1", 5.0, 1),
+            ("u1", "i1", 4.0, 2),
+            ("u1", "i1", 3.0, 3),
+            ("u1", "i2", 5.0, 4),
+            ("u2", "i1", 5.0, 5),
+        ])
+
+    def test_binary_matrix_contains_only_zeros_and_ones(self, repeated):
+        matrix, _, _ = interaction_matrix(repeated, binary=True)
+
+        assert matrix.data.max() == 1.0
+        assert set(np.unique(matrix.data).tolist()) <= {1.0}
+
+    def test_repeat_purchases_do_not_inflate_popularity(self, repeated):
+        """Popularity defines the fairness groups, so inflating it moves the groups."""
+        matrix, _, item_ids = interaction_matrix(repeated, binary=True)
+        popularity = np.asarray(matrix.sum(axis=0)).ravel()
+
+        # i1 was bought by two distinct users (three rows); i2 by one.
+        assert popularity[item_ids.index("i1")] == 2.0
+        assert popularity[item_ids.index("i2")] == 1.0
+
+    def test_non_binary_keeps_the_latest_rating_not_the_sum(self, repeated):
+        """5+4+3 = 12 is not a rating. The most recent one is, matching the temporal
+        convention leave_one_out already uses."""
+        matrix, user_index, item_ids = interaction_matrix(repeated, binary=False)
+
+        cell = matrix[user_index["u1"], item_ids.index("i1")]
+        assert cell == pytest.approx(3.0)
+
+    def test_rows_without_duplicates_are_unchanged(self, repeated):
+        unique = repeated.drop_duplicates(subset=["user_id", "item_id"], keep="last")
+
+        a, _, _ = interaction_matrix(unique, binary=True)
+        b, _, _ = interaction_matrix(repeated, binary=True)
+
+        assert (a != b).nnz == 0
+
+    def test_real_catalogues_are_binary_end_to_end(self, ratings_csv):
+        """The property that actually matters, asserted on the pipeline rather than on
+        a hand-built frame."""
+        bench = load_benchmark(ratings_csv, n_users=5, n_candidates=10, k=3)
+
+        assert bench.stats["density"] <= 1.0
+        for inst in bench.instances:
+            assert np.all(inst.similarity <= 1.0 + 1e-9)

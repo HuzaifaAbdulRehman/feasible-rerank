@@ -5,7 +5,7 @@
 #     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Digital_Music.csv
 #
 # After 5-core filtering: 166,942 interactions, 16,252 users, 11,268 items,
-# density 0.00070. Eight times Luxury Beauty's catalogue and 63x sparser than Gift
+# density 0.00070. Eight times Luxury Beauty's catalogue and 53x sparser than Gift
 # Cards, which is the point: with this the four benchmarks span two orders of magnitude
 # in catalogue size and roughly the same in density.
 #

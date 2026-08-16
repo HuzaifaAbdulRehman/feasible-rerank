@@ -178,7 +178,25 @@ class TestSolveInterface:
 
         x = np.zeros(instance.n)
         x[result.selection] = 1.0
-        assert result.stats["energy"] == pytest.approx(h @ x + 0.5 * x @ (j @ x), abs=1e-9)
+
+        # The BQM offset is part of the energy. Asserting the offset-free formula is
+        # what previously *enforced* this solver reporting on a different scale from
+        # every other one here, so the check is written against the shared definition
+        # instead: whatever bqm.energy() says for the same selection.
+        from qubo_rerank.formulations.builder import build_problem
+
+        rp = build_problem(
+            relevance=instance.relevance, similarity=instance.similarity, k=instance.k,
+            groups=instance.groups, lam=instance.lam, mu=instance.mu,
+            targets=instance.targets,
+        )
+        expected = rp.bqm.energy(
+            {i: (1 if i in set(result.selection) else 0) for i in range(instance.n)}
+        )
+        assert result.stats["energy"] == pytest.approx(expected, abs=1e-9)
+        assert result.stats["energy"] == pytest.approx(
+            h @ x + 0.5 * x @ (j @ x) + rp.bqm.offset, abs=1e-9
+        )
 
     def test_carries_an_energy_breakdown(self):
         instance = make_instance(n_items=30, n_groups=3, k=5, seed=2)

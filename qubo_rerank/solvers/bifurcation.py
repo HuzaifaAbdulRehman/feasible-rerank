@@ -178,7 +178,16 @@ class SimulatedBifurcation:
                 x_bits = (spins + 1.0) / 2.0
                 cardinalities.append(int(x_bits.sum()))
 
-                energy = float(h_qubo @ x_bits + 0.5 * x_bits @ (j_qubo @ x_bits))
+                # The BQM's constant offset is included. Without it this solver reported
+                # an energy on a different scale from every other solver here -- all of
+                # which surface `sampleset.first.energy` or `bqm.energy(...)`, both of
+                # which carry the offset -- so `stats["energy"]` was silently
+                # incomparable across methods. The penalty-encoded cardinality term
+                # contributes an offset of P*k^2, which is large: 2.76 on a 30-item
+                # instance whose objective spans hundredths.
+                energy = float(
+                    h_qubo @ x_bits + 0.5 * x_bits @ (j_qubo @ x_bits) + rp.bqm.offset
+                )
                 if energy < best_energy:
                     best_energy = energy
                     best_selection = [int(i) for i in np.flatnonzero(x_bits > 0.5)]

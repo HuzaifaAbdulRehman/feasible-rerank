@@ -4,7 +4,9 @@
 #   curl --create-dirs -o data/amazon_Software/Software.csv \
 #     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Software.csv
 #
-# After 5-core filtering: 12,454 interactions, 1,779 users, 729 items, density 0.0096.
+# After 5-core filtering: 12,454 interactions, 1,779 users, 729 items.
+# The training matrix collapses repeat purchases (11,598 distinct user-item pairs,
+# 727 items after the held-out split), giving density 0.0078.
 #
 # Chosen because it differs from Luxury Beauty in the ways that should matter to the
 # fairness result while staying e-commerce: half the catalogue, half the users, and 1.4x

@@ -188,10 +188,29 @@ def main() -> None:
     ap.add_argument("--config", required=True, type=Path)
     ap.add_argument("--reference", default="quota_mmr",
                     help="method every other method is compared against")
-    ap.add_argument("--metric", nargs="+", default=["ndcg@k", "exposure_parity", "recall@k"],
+    # The default is the family the published tables report, and that is not cosmetic:
+    # Holm's step-down multiplier is the family size, so running three metrics instead
+    # of four changes every corrected p-value in the write-up. The documented command
+    # passes no --metric, so the default has to be the published family or the numbers
+    # cannot be reproduced from the instructions given.
+    #
+    # `exposure_parity_equal` is deliberately excluded: it is the same selections read
+    # against a second definition, so including it would inflate the family with a
+    # comparison that is not independent.
+    ap.add_argument("--metric", nargs="+",
+                    default=["ndcg@k", "exposure_parity", "recall@k", "intra_list_sim"],
                     help=f"paired metrics; available: {', '.join(PER_USER_METRICS)}")
     ap.add_argument("--lam", type=float, default=None)
     ap.add_argument("--mu", type=float, default=None)
+    # Without this the comparison is asymmetric and quietly so. `--lam/--mu` move the
+    # QUBO to a protocol-selected operating point, while the classical baselines keep
+    # whatever `mmr_lam` the config happens to carry -- 0.5 everywhere in this repo,
+    # which is a value the protocol never selects (it picks 0.3 under tight budgets and
+    # 0.7 under loose ones). Tuning one side and not the other is the exact asymmetry
+    # that produced this project's first, wrong conclusion, pointed the other way.
+    ap.add_argument("--mmr-lam", type=float, default=None,
+                    help="trade-off for mmr / quota_mmr / balanced_quota; without it "
+                         "they run at the config default while the QUBO runs tuned")
     ap.add_argument("--n-users", type=int, default=None)
     ap.add_argument("--alpha", type=float, default=0.05)
     ap.add_argument("--out", type=Path, default=None)
@@ -204,6 +223,8 @@ def main() -> None:
         cfg["lam"] = args.lam
     if args.mu is not None:
         cfg["mu"] = args.mu
+    if args.mmr_lam is not None:
+        cfg.setdefault("solvers", {})["mmr_lam"] = args.mmr_lam
 
     bench = build_benchmark(cfg)
     print(
