@@ -120,3 +120,61 @@ class TestProportionalTargets:
 
         assert under_proportional < under_equal
         assert under_proportional == pytest.approx(0.0, abs=1e-9)
+
+
+# ------------------------------------------------------- the ablation driver itself
+
+
+class TestAblationDriver:
+    """The scalar ablation is a loop over configs; the failure worth guarding is that it
+    silently fails to vary anything, which would produce a table of identical rows that
+    reads as "the choice does not matter"."""
+
+    def cfg(self) -> dict:
+        return {
+            "seed": 0,
+            "measure_energy": False,
+            "lam": 0.0,
+            "mu": 1.0,
+            "data": {"n_users": 6, "n_items": 20, "n_groups": 4, "k": 5},
+            "solvers": {
+                "greedy": True, "mmr": False, "quota_mmr": True,
+                "qubo_sa": False, "qubo_tabu": False, "qubo_feasible": True,
+                "mmr_lam": 0.5, "num_restarts": 2, "num_sweeps": 10,
+            },
+        }
+
+    def test_scalar_ablation_actually_varies_the_setting(self):
+        from experiments.ablation import ablate_scalar
+
+        frame = ablate_scalar(self.cfg(), ["greedy_topk"], "k", [3, 5])
+
+        assert sorted(frame["setting"].unique()) == ["3", "5"]
+        assert (frame["ablation"] == "k").all()
+
+    def test_scalar_ablation_reaches_the_benchmark(self):
+        """Varying k must change the lists, not just the label on the row."""
+        from experiments.ablation import ablate_scalar
+
+        frame = ablate_scalar(self.cfg(), ["quota_mmr"], "k", [2, 8])
+        parities = frame["exposure_parity"].tolist()
+
+        assert parities[0] != parities[1]
+
+    def test_targets_ablation_scores_under_both_definitions(self):
+        """The confound guard: both columns must be present, or a proportional-target
+        solver is being judged on an equal-target metric it never optimised."""
+        from experiments.ablation import ablate_targets
+
+        frame = ablate_targets(self.cfg(), ["quota_mmr"])
+
+        assert {"parity_vs_equal", "parity_vs_proportional"} <= set(frame.columns)
+        assert set(frame["setting"]) == {"equal", "proportional"}
+
+    def test_group_sizes_reports_every_group(self):
+        from experiments.ablation import group_sizes
+        from experiments.run_experiment import build_benchmark
+
+        text = group_sizes(build_benchmark(self.cfg()))
+
+        assert len(text.split(" / ")) == self.cfg()["data"]["n_groups"]

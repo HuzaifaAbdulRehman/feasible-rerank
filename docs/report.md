@@ -405,7 +405,7 @@ stronger claim was true of the regime it was measured in and false in general.
 
 ```bash
 pip install -r requirements.txt
-pytest tests/                                    # 223 tests
+pytest tests/                                    # 308 tests
 
 curl --create-dirs -o data/amazon_lb/Luxury_Beauty.csv \
   https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Luxury_Beauty.csv

@@ -399,11 +399,11 @@ qubo_rerank/
 ├── formulations/   objective · cardinality · fairness · builder
 ├── solvers/        greedy · MMR · quota-MMR · neal SA · tabu · swap · bifurcation · QPU
 └── metrics/        NDCG · recall · coverage · Gini · exposure parity · DPFR · kWh
-benchmarks/         synthetic generator · Amazon loader (k-core, ItemKNN, LOO split)
+benchmarks/         synthetic · Amazon (ItemKNN) · MovieLens (genres) · ALS factorisation
 experiments/        run_experiment · sweep · protocol · paired · sensitivity ·
                     optimality · exact · ablation · compare_datasets · plots
-configs/            YAML experiment configs (synthetic + 3 Amazon categories)
-tests/              223 tests · ~75% line coverage
+configs/            YAML configs: synthetic, 4 Amazon categories, MovieLens, MF
+tests/              308 tests · 66% line coverage
 ```
 
 A written-up version of the findings, with method and limitations, is in

@@ -18,7 +18,7 @@ abstract: >-
   intra-list diversity and group exposure fairness, with exact-k enforced as a
   penalty term, and reports the energy cost of doing so.
 
-  Two findings are documented. First, the textbook recipe -- penalty-encoded
+  Five findings are documented. First, the textbook recipe -- penalty-encoded
   cardinality handed to a single-flip simulated annealer -- fails silently at
   realistic candidate-set sizes: two feasible k-sets are never adjacent under
   single-spin-flip moves, so the sampler returns lists that are always the right
@@ -26,7 +26,20 @@ abstract: >-
   baseline on its own objective. Tabu search and a constraint-preserving swap
   annealer both recover roughly a factor of two.
 
-  Second, the choice of the diversity and fairness weights decides the
-  QUBO-versus-classical comparison by a larger margin than the methods differ from
-  one another; a comparison run with the fairness term disabled reverses the
-  conclusion.
+  Second, the failure is a property of the encoding rather than of thermal search: a
+  continuous-dynamics solver (Simulated Bifurcation) fails on the same problem by a
+  different mechanism, and no amount of additional compute rescues either.
+
+  Third, the choice of the diversity and fairness weights decides the QUBO-versus-
+  classical comparison by a larger margin than the methods differ from one another; a
+  comparison run with the fairness term disabled reverses the conclusion.
+
+  Fourth, under a protocol that tunes every method on a disjoint half of the users, the
+  QUBO's advantage is feasibility rather than accuracy: below a group-exposure budget of
+  about 0.25 no classical reranker tested can satisfy the constraint at any setting of
+  its own hyperparameters. This holds on six benchmarks spanning two domains, two group
+  definitions and two retrieval models.
+
+  Fifth, that advantage has a precise boundary: it disappears when the list size divides
+  evenly by the number of groups, because a greedy quota allocation is then already
+  optimal.
