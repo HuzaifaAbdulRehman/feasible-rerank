@@ -451,13 +451,24 @@ Holm correction, which is where "the two methods tie on NDCG" became the more pr
 
 **Remaining, in priority order:**
 
-1. **Run the D-Wave Leap QPU experiment.** `qubo_rerank/solvers/quantum.py` is written
-   and wired in; it has **never been run**, because it needs a Leap account and the free
-   tier's monthly minute of QPU time. It reports embedding overhead, chain-break fraction
-   and total time-to-solution separately from QPU access time — the last being the number
-   that flatters quantum hardware by excluding the classical work needed to use it. Note
+1. **The D-Wave Leap QPU experiment cannot be run from here.**
+   `qubo_rerank/solvers/quantum.py` is written and wired in, and it has never been run —
+   not for want of trying. D-Wave restricts Leap access by country under export control,
+   and the account this work was done from is in a blocked region. This is a permanent
+   constraint on the environment, not a task left undone, and no attempt was made to
+   circumvent it.
+
+   The code stays in the repository because it is the correct experiment for anyone who
+   *can* run it: it reports embedding overhead, chain-break fraction and total
+   time-to-solution separately from QPU access time — the last being the number that
+   flatters quantum hardware by excluding the classical work needed to use it. Note also
    that a dense 200-variable clique may not embed on current topologies at all, which
-   would itself be the result.
+   would itself be the finding.
+
+   What this means for the project's claims: everything here is classical or
+   quantum-*inspired*, and the barrier argument's extension to physical annealers
+   remains a prediction rather than a measurement. Simulated Bifurcation is the closest
+   available test, and it behaves as predicted.
 2. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
    across machines. See the note on its wall-clock timeout below.
 3. **Paired tests inside the disjoint-split protocol.** The paired tests run at a fixed

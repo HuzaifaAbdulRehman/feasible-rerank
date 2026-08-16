@@ -1,9 +1,13 @@
 """D-Wave quantum annealer, via Leap.
 
-**Status: written, not yet run on hardware.** Everything else in this repo reports
-numbers that were measured. This module does not, because running it needs a D-Wave Leap
-account and the free tier's monthly minute of QPU time. It is included so the experiment
-is ready to run, and it is marked clearly so nothing here is mistaken for a result.
+**Status: written, never run on hardware, and not runnable from this project's
+environment.** D-Wave restricts Leap access by country under export control, and the
+region this was developed in is blocked. That is a permanent constraint rather than a
+pending task, and no attempt was made to work around it.
+
+Everything else in this repository reports numbers that were measured. This module does
+not, and is marked clearly so nothing here is mistaken for a result. It is kept because
+it is the correct experiment for anyone who *can* run it.
 
 Why it belongs in the project at all: the central finding is that penalty-encoded
 cardinality defeats unaided solvers, demonstrated on a thermal sampler (``qubo_sa``) and
