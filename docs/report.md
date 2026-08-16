@@ -455,7 +455,7 @@ curl --create-dirs -o data/amazon_lb/Luxury_Beauty.csv \
 # cross-dataset comparison for that reason.
 python experiments/protocol.py --config configs/amazon_lb.yaml \
   --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
-  --method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible
+  --method greedy_topk mmr quota_mmr balanced_quota qubo_tabu qubo_feasible
 python experiments/compare_datasets.py
 
 # the n-ladder in section 2.1a. Previously unreproducible: --n-items took one integer

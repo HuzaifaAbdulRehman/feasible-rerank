@@ -416,14 +416,14 @@ python experiments/sweep.py --config configs/amazon_lb.yaml --n-users 40
 # because it lost a close race. Run `--method qubo_sa` on its own to see it fail.
 python experiments/protocol.py --config configs/amazon_lb.yaml \
   --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
-  --method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible
+  --method greedy_topk mmr quota_mmr balanced_quota qubo_tabu qubo_feasible
 
 # paired per-user significance tests -- Wilcoxon, Holm-corrected across the family
 python experiments/paired.py --config configs/amazon_lb.yaml --lam 0.0 --mu 1.0   --n-users 200 --reference quota_mmr
 
 # does the result survive a change of catalogue? Run the protocol on the others first;
 # each config carries its own download command.
-METHODS="--method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible"
+METHODS="--method greedy_topk mmr quota_mmr balanced_quota qubo_tabu qubo_feasible"
 python experiments/protocol.py --config configs/amazon_software.yaml  --repeats 3 --n-users 80 $METHODS
 python experiments/protocol.py --config configs/amazon_giftcards.yaml --repeats 3 --n-users 80 $METHODS
 
