@@ -227,8 +227,9 @@ to differ in the ways that should matter:
 
 Identical budgets, grids and seeds throughout — nothing is tuned per catalogue.
 
-Six benchmarks: five catalogues across two domains, plus one that swaps the retrieval
-model. Two are the important ones: **MovieLens groups are
+Eight benchmarks over five catalogues: two domains, one that swaps the retrieval model,
+and two that regroup the Software catalogue by real seller and real product category.
+Three are the important ones: **MovieLens groups are
 curator-assigned genres** (Drama / Comedy / Romance / other), not popularity tiers, so it
 tests the constraint against categories defined independently of the data being scored.
 
@@ -518,7 +519,7 @@ A written-up version of the findings, with method and limitations, is in
 | Phase | Content | Status |
 |---|---|---|
 | **1** | CF baseline, core QUBO, fairness term, solvers, one real dataset | done |
-| **2** | Repeated seeds, disjoint tuning split, paired tests, 6 benchmarks | done |
+| **2** | Repeated seeds, disjoint tuning split, paired tests, 8 benchmarks | done |
 | **3** | Sparse similarity, Simulated Bifurcation, exact MIP baseline, ablations | done |
 | | D-Wave Leap QPU | **blocked** |
 | **4** | Packaging, docs | done |
@@ -553,7 +554,7 @@ nothing.
 Not a todo list. These need resources this environment does not have, or are separate
 projects rather than unfinished work here.
 
-1. **A third domain.** Six benchmarks cover retail and film. Music, books or news would
+1. **A third domain.** Eight benchmarks cover retail and film. Music, books or news would
    test whether the feasibility result depends on catalogue semantics. Free datasets
    exist, so this is the cheapest real extension.
 2. **A sequential retrieval model.** ItemKNN and ALS both score without regard to order.

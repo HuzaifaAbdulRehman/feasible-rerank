@@ -432,9 +432,10 @@ stronger claim was true of the regime it was measured in and false in general.
 4. **Candidate sets are small** (n=100–200). The scaling question — whether any of this
    survives a catalogue an order of magnitude larger — is now *tractable* thanks to the
    sparse similarity path, but has not been run.
-5. **Six benchmarks, but only two domains and two retrieval models.** MovieLens adds a
-   second domain and the only non-popularity group partition; the MF benchmark adds a
-   second retrieval model. Breadth beyond retail and film, and beyond ItemKNN and ALS,
+5. **Eight benchmarks, but only five catalogues, two domains and two retrieval models.**
+   MovieLens adds a second domain; the MF benchmark adds a second retrieval model; the
+   seller and category benchmarks add group partitions taken from real metadata rather
+   than derived from the interactions being scored. Breadth beyond retail and film, and beyond ItemKNN and ALS,
    is untested.
 6. **No physical quantum hardware.** Everything here is classical or quantum-*inspired*.
 
