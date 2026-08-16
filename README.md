@@ -125,6 +125,43 @@ whether the sampler optimised anything at all. A near-random feasible list score
 on diversity and coverage. Reporting only downstream metrics would have hidden this
 completely.
 
+### Why not just use an exact solver?
+
+The first question any reviewer asks about a QUBO paper, and the project had no answer
+until now. Selecting k items under a linear-plus-quadratic objective and a cardinality
+constraint is a mixed-integer program; `experiments/exact.py` builds it with a McCormick
+linearisation and hands it to HiGHS, with cardinality as a real constraint (`Σx = k`)
+rather than a penalty.
+
+Mean of 3 instances, k=10, λ=4. The exact column is **proven optimal** at every size:
+
+| n | exact (proven) | secs | qubo_tabu | secs | qubo_feasible | secs | qubo_sa | greedy_topk |
+|---|---|---|---|---|---|---|---|---|
+| 20 | **+0.828** | 0.4 | +1.214 | 1.5 | +1.214 | 0.06 | +2.550 | +6.153 |
+| 50 | **−3.913** | 27.6 | −3.132 | 4.1 | −3.417 | 0.19 | +2.250 | +5.689 |
+| 100 | **−5.543** | 113.6 | −5.513 | 3.1 | −5.165 | 0.37 | +2.276 | +3.257 |
+| 200 | **−6.930** | **642.2** | −6.296 | 2.3 | −5.988 | 0.64 | +1.900 | +1.831 |
+
+**Exact solving is tractable at reranking scale — and impractical anyway.** HiGHS proves
+optimality at n=200 in **642 seconds**, against `qubo_feasible`'s 0.64 s: a **1,000×**
+gap for a 14% better objective. For an offline batch job that may be the right trade. For
+a recommender answering a live request it is not a trade at all.
+
+So the honest recommendation is a decision rule rather than a winner:
+
+- **n ≤ 50, offline:** use the MIP solver. It is exact, and 28 seconds is nothing in a batch.
+- **n ≥ 100, or online:** use `qubo_tabu`. At n=100 it reaches **99.5%** of the proven
+  optimum in 1/37th of the time; at n=200, **91%** in 1/284th.
+- **Never use penalty-encoded `neal`.** At n=200 it scores +1.900 against greedy top-k's
+  +1.831 — *worse than a method that does no search at all*, now measured against a
+  proven optimum rather than against other heuristics.
+
+**This also corrects an earlier claim in this README.** The optimality experiment found
+tabu and swap annealing *exactly* optimal, but that was at n≤30 with k=5, where
+enumeration is possible. Against proven optima at realistic sizes they are near-optimal
+and **degrade with n** — 99.5% at n=100, 91% at n=200. "Exactly optimal" was true of the
+regime it was measured in and false as a general statement.
+
 ### When does the fairness advantage actually exist?
 
 Three formulation choices were made early and never revisited: equal group targets,
@@ -199,9 +236,12 @@ n=22, k=5, λ=4, 12 instances:
 | greedy_topk | 14.4% | 0% | 100% |
 | *random_feasible* | *0.0%* | — | 100% |
 
-**Both constraint-preserving solvers are exactly optimal on every instance** — not merely
-better than a broken one. That is what licenses trusting them at n=200, where enumeration
-is impossible, and `tests/test_optimality.py` pins it so a regression cannot pass quietly.
+**Both constraint-preserving solvers are exactly optimal on every instance at this size**
+— not merely better than a broken one — and `tests/test_optimality.py` pins it so a
+regression cannot pass quietly. Note the qualifier: this holds at n≤30, k=5. Checked
+against a MIP solver's proven optima at realistic sizes, they are near-optimal rather
+than optimal, and the gap grows with n (99.5% at n=100, 91% at n=200). See
+[Why not just use an exact solver?](#why-not-just-use-an-exact-solver).
 
 **And the barrier grows with n, exactly as the mechanism predicts.** The penalty scales
 with the number of variables while the objective does not, so `neal` should degrade as

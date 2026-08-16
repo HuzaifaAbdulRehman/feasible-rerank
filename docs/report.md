@@ -353,6 +353,33 @@ checks were written.
 shape to that prior work: it is the failure analysis, the constraint-preserving solver,
 the disjoint-split evaluation protocol, and the fairness-budget framing.
 
+## 5c. Why not an exact solver?
+
+Selecting k items under a linear-plus-quadratic objective and a cardinality constraint is
+a mixed-integer program. Built with a McCormick linearisation and solved by HiGHS, with
+cardinality as a real constraint rather than a penalty (mean of 3 instances, k=10):
+
+  n      exact (proven)   secs     qubo_tabu   secs    qubo_feasible   secs
+  20        +0.828         0.4       +1.214     1.5       +1.214        0.06
+  50        -3.913        27.6       -3.132     4.1       -3.417        0.19
+  100       -5.543       113.6       -5.513     3.1       -5.165        0.37
+  200       -6.930       642.2       -6.296     2.3       -5.988        0.64
+
+Exact solving is tractable at reranking scale and impractical anyway: 642 s at n=200
+against qubo_feasible's 0.64 s, a 1,000x gap for a 14% better objective. Offline that may
+be the right trade; for a live request it is not a trade.
+
+The recommendation is therefore a decision rule, not a winner. Below n=50 and offline,
+use the MIP solver -- it is exact and 28 s is nothing in a batch. At n>=100 or online,
+use qubo_tabu: 99.5% of the proven optimum at n=100 in 1/37th of the time, 91% at n=200
+in 1/284th. Never use penalty-encoded neal, which at n=200 scores +1.900 against greedy
+top-k's +1.831 -- worse than a method that performs no search, measured against a proven
+optimum.
+
+This also qualifies section 2.1a. Tabu and swap annealing are *exactly* optimal at n<=30
+where enumeration is possible, but near-optimal and degrading at realistic sizes. The
+stronger claim was true of the regime it was measured in and false in general.
+
 ## 6. Limitations
 
 1. **Groups are popularity tiers, not categories or sellers.** The ratings export carries
