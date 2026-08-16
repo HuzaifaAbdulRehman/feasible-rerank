@@ -12,9 +12,11 @@ instead selects the *entire list at once* as a Quadratic Unconstrained Binary Op
 (QUBO) problem, jointly balancing relevance, diversity, and exposure fairness — and reports
 the energy cost of doing so.
 
-> Status: **Phases 1-2 complete, Phase 3 under way** — end-to-end on real data, every
-> headline comparison averaged over 5 seeds, and a negative result about the standard
-> QUBO recipe that turned out to be the most interesting thing here.
+> Status: **complete**, apart from a QPU run that is export-blocked from this region.
+> End-to-end on real data across 6 benchmarks, every headline comparison averaged over
+> repeated seeds with paired significance testing, checked against mixed-integer-proven
+> optima, and built around a negative result about the standard QUBO recipe that turned
+> out to be the most interesting thing here.
 
 **Documentation.** This file is the summary: what was found, the headline numbers, and
 how to reproduce them. Two companions carry the detail —
@@ -418,76 +420,57 @@ A written-up version of the findings, with method and limitations, is in
 
 ## Roadmap
 
-
-
 | Phase | Content | Status |
 |---|---|---|
 | **1** | CF baseline, core QUBO, fairness term, solvers, one real dataset | done |
-| **2** | Repeated seeds · disjoint tuning split · paired tests · 3 datasets | done |
-| **3** | Sparse similarity · Simulated Bifurcation · D-Wave Leap QPU | partly |
-| **4** | Packaging, docs, PyPI release | |
-| **5** | Technical report / preprint | |
+| **2** | Repeated seeds, disjoint tuning split, paired tests, 6 benchmarks | done |
+| **3** | Sparse similarity, Simulated Bifurcation, exact MIP baseline, ablations | done |
+| | D-Wave Leap QPU | **blocked** |
+| **4** | Packaging, docs | done |
+| | PyPI release | dropped |
+| **5** | Technical report | done |
+| | arXiv preprint | not started |
 
-**Done in Phase 2:** every headline comparison is now a mean ± std over 5 seeds, with
-the benchmark rebuilt each time so the user sample varies too (`--repeats`).
+Two rows need explaining, because "blocked" and "dropped" are not the same as "todo".
 
-That immediately retired one claim. An earlier draft of this file discussed `qubo_tabu`
-and `qubo_feasible` as if they were distinguishable at `λ=4, μ=0`; across 5 seeds they
-sit at 0.6915 ± 0.0384 and 0.6881 ± 0.0400, a gap roughly a tenth of the noise. It also
-predicted that "some of the gaps will not survive repeated runs" — that was the one.
-The `qubo_sa` result survived comfortably, as predicted.
+**The QPU experiment is blocked, not pending.** `qubo_rerank/solvers/quantum.py` is
+written and wired in and has never been run. D-Wave restricts Leap access by country
+under export control and the region this was developed in is blocked; that was confirmed
+at signup, not assumed. No attempt was made to circumvent it. The code stays because it
+is the correct experiment for whoever can run it — it reports embedding overhead,
+chain-break fraction and total time-to-solution separately from QPU access time, the last
+being the number that flatters quantum hardware by excluding the classical work needed to
+use it. A dense 200-variable clique may not embed on current topologies at all, which
+would itself be a finding.
 
-**Also done:** the disjoint tuning split (`experiments/protocol.py`) — see
-[Tuning and evaluation on disjoint users](#tuning-and-evaluation-on-disjoint-users).
-Every method, baselines included, is now tuned on one half of the users under a declared
-fairness budget and scored on the other half.
+What it costs the argument: everything here is classical or quantum-*inspired*, so the
+barrier's extension to physical annealers stays a prediction. Simulated Bifurcation is
+the closest available substitute and behaves as predicted, which is corroboration but not
+the same thing.
 
-**Also done:** paired per-user significance testing (`experiments/paired.py`) — see
-[Paired per-user tests](#paired-per-user-tests). Wilcoxon signed-rank over 200 users with
-Holm correction, which is where "the two methods tie on NDCG" became the more precise
-"they differ by 0.0012, certainly."
+**PyPI was dropped deliberately.** This is a research codebase run from a checkout, not a
+library anyone imports. `pyproject.toml` carries full metadata and supports an editable
+install; claiming a package name nobody will `pip install` costs something and buys
+nothing.
 
-**Done in Phase 3 so far:**
+### What would genuinely extend this
 
-- **Sparse similarity.** The dense path allocates `n_items²` floats — 15 MB on Luxury
-  Beauty, but **1,016 MB** on Amazon Digital Music, whose catalogue survives 5-core
-  filtering at 11,269 items. Co-occurrence is naturally sparse and the normaliser is only
-  needed where it is non-zero, so the dense outer product is never formed. Stores 9.7% of
-  the dense matrix and reproduces it to exactly 0.0 difference.
-- **Simulated Bifurcation** — see [Continuous dynamics fail too](docs/findings.md#continuous-dynamics-fail-too).
+Not a todo list. These need resources this environment does not have, or are separate
+projects rather than unfinished work here.
 
-**Remaining, in priority order:**
-
-1. **The D-Wave Leap QPU experiment cannot be run from here.**
-   `qubo_rerank/solvers/quantum.py` is written and wired in, and it has never been run —
-   not for want of trying. D-Wave restricts Leap access by country under export control,
-   and the account this work was done from is in a blocked region. This is a permanent
-   constraint on the environment, not a task left undone, and no attempt was made to
-   circumvent it.
-
-   The code stays in the repository because it is the correct experiment for anyone who
-   *can* run it: it reports embedding overhead, chain-break fraction and total
-   time-to-solution separately from QPU access time — the last being the number that
-   flatters quantum hardware by excluding the classical work needed to use it. Note also
-   that a dense 200-variable clique may not embed on current topologies at all, which
-   would itself be the finding.
-
-   What this means for the project's claims: everything here is classical or
-   quantum-*inspired*, and the barrier argument's extension to physical annealers
-   remains a prediction rather than a measurement. Simulated Bifurcation is the closest
-   available test, and it behaves as predicted.
-2. **A work-based stopping criterion for `qubo_tabu`**, so its results are portable
-   across machines. See the note on its wall-clock timeout below.
-3. **Paired tests inside the disjoint-split protocol.** The paired tests run at a fixed
-   operating point; combining the two would test the selected configuration on the
-   evaluation half directly.
-4. **Run the protocol on Amazon Digital Music.** `configs/amazon_music.yaml` is set up
-   and the pipeline loads it (11,268 items, 6.4 s, 270 MB peak — the dense path would
-   have needed 1,016 MB), but the protocol has **not been run** on it yet. It would take
-   the benchmark set to four catalogues spanning two orders of magnitude in size and
-   density, and it is the first real test of whether any of this survives a catalogue an
-   order of magnitude larger. Expect lower accuracy across every method: the
-   candidate-set ceiling on recall is 0.20 there, against 0.49 on Luxury Beauty.
+1. **A third domain.** Six benchmarks cover retail and film. Music, books or news would
+   test whether the feasibility result depends on catalogue semantics. Free datasets
+   exist, so this is the cheapest real extension.
+2. **A sequential retrieval model.** ItemKNN and ALS both score without regard to order.
+   SASRec or GRU4Rec bias toward *recency* rather than popularity, which is a
+   structurally different bias and therefore a genuine test rather than a third run of
+   the same experiment.
+3. **Energy measured at the wall.** `codecarbon` estimates from CPU TDP and utilisation
+   and is not a power meter; below ~0.1 s its readings are noise. A plug-in meter, or
+   Intel RAPL counters, would put these numbers on firmer footing than most published
+   green-recsys work.
+4. **A preprint.** [`docs/report.md`](docs/report.md) is the substance; turning it into a
+   submission is writing, not research.
 
 ## Related work
 

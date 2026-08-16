@@ -1,6 +1,6 @@
 # When is a QUBO worth it for fair recommendation reranking?
 
-**Technical report — `feasible-rerank`, Phase 3**
+**Technical report — `feasible-rerank`**
 Huzaifa Abdul Rehman
 
 ---
