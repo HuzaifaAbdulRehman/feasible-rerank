@@ -1,0 +1,67 @@
+# Amazon Software, partitioned by REAL PRODUCT CATEGORY with proportional targets.
+#
+# The companion to amazon_software_vendor.yaml, and the harder of the two cases. Where
+# popularity tiers and vendor tiers are equal-sized by construction, real categories are
+# not: the filtered Software catalogue holds 121 items in Digital Software against 36 in
+# Video. Handing such a partition the usual equal-share target k/|C| asks each category
+# for an exposure the catalogue cannot supply, and every method then fails the constraint
+# for a reason that has nothing to do with the method.
+#
+# So this config uses proportional targets -- each group's target is its share of the
+# candidate set, times k. That is the case classical quota reranking cannot express at
+# all: QuotaMMR allocates integer quotas round-robin, while the QUBO's fairness term
+# takes an arbitrary real-valued target vector. This benchmark is therefore the one that
+# exercises the formulation's least contested advantage on real data rather than on the
+# constructed instance in experiments/sensitivity.py.
+#
+# Download once:
+#   curl --create-dirs -o data/amazon_Software/Software.csv \
+#     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Software.csv
+#   python benchmarks/metadata.py --download Software \
+#     --out data/amazon_Software/meta_Software.json.gz
+#
+# Coverage: 680 of 727 filtered items carry a category path (93.5%). Groups are the three
+# largest first-level categories plus a pooled remainder, which also absorbs the 6.5%
+# with no category:
+#   Digital Software (121)  Antivirus & Security (116)  Business & Office (77)  other
+#
+# Agreement with the popularity partition: NMI 0.0163, ARI +0.0096 -- effectively a
+# different question, not a relabelling. Reproduce with:
+#   python benchmarks/metadata.py --data data/amazon_Software/Software.csv \
+#     --meta data/amazon_Software/meta_Software.json.gz
+
+seed: 0
+measure_energy: true
+
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Software/Software.csv
+  metadata_path: data/amazon_Software/meta_Software.json.gz
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 200
+  n_groups: 4
+  k: 10
+  grouping: category         # three largest real categories plus a pooled remainder
+  targets_mode: auto         # -> proportional, because real categories are unequal
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

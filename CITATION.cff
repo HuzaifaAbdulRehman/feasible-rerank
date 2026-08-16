@@ -18,7 +18,7 @@ abstract: >-
   intra-list diversity and group exposure fairness, with exact-k enforced as a
   penalty term, and reports the energy cost of doing so.
 
-  Five findings are documented. First, the textbook recipe -- penalty-encoded
+  Six findings are documented. First, the textbook recipe -- penalty-encoded
   cardinality handed to a single-flip simulated annealer -- fails silently at
   realistic candidate-set sizes: two feasible k-sets are never adjacent under
   single-spin-flip moves, so the sampler returns lists that are always the right
@@ -37,9 +37,19 @@ abstract: >-
   Fourth, under a protocol that tunes every method on a disjoint half of the users, the
   QUBO's advantage is feasibility rather than accuracy: below a group-exposure budget of
   about 0.25 no classical reranker tested can satisfy the constraint at any setting of
-  its own hyperparameters. This holds on six benchmarks spanning two domains, two group
-  definitions and two retrieval models.
+  its own hyperparameters. This holds on eight benchmarks spanning two domains, four
+  group definitions -- popularity tier, curator-assigned genre, real seller and real
+  product category -- and two retrieval models.
 
   Fifth, that advantage has a precise boundary: it disappears when the list size divides
   evenly by the number of groups, because a greedy quota allocation is then already
   optimal.
+
+  Sixth, where the exposure targets are proportional rather than equal, the classical
+  quota reranker fails outright rather than degrading: on real Amazon product categories
+  it meets no budget below 1.00 at any setting of its own hyperparameter, while both QUBO
+  variants are unaffected and the better of them is also the most accurate method tested.
+  A matched ablation that changes only the target vector -- same catalogue, partition,
+  grids and seeds -- restores the quota reranker to its usual reach, isolating the cause
+  as the inability of round-robin integer quotas to represent a proportional target
+  rather than any property of the partition.

@@ -17,15 +17,22 @@ which is RecBole's ``ComputeSimilarity`` with ``method='item'``. The on-disk for
 stays RecBole-compatible, so swapping the real thing back in later is a loader change
 and nothing else.
 
-**Groups.** The ratings file carries no category or seller metadata, so the group
-partition used by the fairness term is *popularity tier*: items are rank-ordered by
-training interaction count and cut into equal-sized tiers, tier 0 being the short
+**Groups.** The ratings file carries no category or seller metadata, so the *default*
+group partition used by the fairness term is *popularity tier*: items are rank-ordered
+by training interaction count and cut into equal-sized tiers, tier 0 being the short
 head. This is the standard short-head/long-tail partition from the popularity-bias
 literature (Abdollahpouri et al., "Managing Popularity Bias in Recommender Systems
 with Personalized Re-ranking", FLAIRS 2019). It is also the honest choice here: it
 makes the fairness term fight the exact bias ItemKNN exhibits, rather than a
-partition chosen to flatter it. Pass ``groups=`` explicitly to use real categories
-once metadata is available.
+partition chosen to flatter it.
+
+Real **seller** and **product category** partitions are available where Amazon's
+separate metadata export populates them -- ``grouping="vendor"`` and
+``grouping="category"``, which need ``metadata_path``. On Software that is 99.3% and
+93.5% of the filtered catalogue; on Luxury Beauty the fields are present but blank, so
+those groupings raise rather than silently collapsing to one group. Both partitions are
+near-independent of the popularity tiers (NMI < 0.02), so they measure a different
+fairness question rather than restating this one. See :mod:`benchmarks.metadata`.
 
 **Evaluation protocol.** Leave-one-out on the most recent interaction per user, which
 is what the Amazon timestamp column is for. Because candidates are the top-N by the
@@ -54,6 +61,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from benchmarks.metadata import proportional_targets
 from qubo_rerank.problem import RerankInstance
 
 RATINGS_URL = (
@@ -345,6 +353,9 @@ def load_benchmark(
     seed: int | None = 0,
     sparse_similarity: bool | None = None,
     dense_similarity_limit: int = 256_000_000,
+    grouping: str = "popularity",
+    metadata_path: str | Path | None = None,
+    targets_mode: str = "auto",
 ) -> Benchmark:
     """Load a ratings file and turn it into reranking instances.
 
@@ -366,10 +377,38 @@ def load_benchmark(
         dense_similarity_limit: byte budget above which the sparse path is used.
             Defaults to 256 MB, which admits every catalogue here except Digital Music's
             11,269 items (~1 GB).
+        grouping: which partition the fairness term acts on. ``"popularity"`` (default)
+            uses interaction-count tiers and needs no metadata. ``"vendor"`` and
+            ``"category"`` use the real seller and product-category fields from the
+            Amazon metadata export and require ``metadata_path``; see
+            :mod:`benchmarks.metadata` for coverage, which is adequate on Software and
+            effectively zero on Luxury Beauty.
+        metadata_path: gzipped ``meta_*.json.gz`` export. Required unless
+            ``grouping="popularity"``.
+        targets_mode: ``"equal"`` gives every group the same target ``k/|C|``;
+            ``"proportional"`` scales targets by each group's share of the candidate
+            set. ``"auto"`` picks equal for the equal-sized popularity and vendor tiers
+            and proportional for real categories, which are genuinely unequal and would
+            otherwise be handed a target the catalogue cannot supply.
 
     Returns:
         A :class:`Benchmark`.
+
+    Raises:
+        benchmarks.metadata.MetadataCoverageError: if a metadata-backed grouping is
+            requested for a catalogue whose export lacks the field.
     """
+    grouping = grouping.lower()
+    if grouping not in {"popularity", "vendor", "category"}:
+        raise ValueError(
+            f"grouping must be 'popularity', 'vendor' or 'category', got {grouping!r}"
+        )
+    if targets_mode not in {"auto", "equal", "proportional"}:
+        raise ValueError(
+            f"targets_mode must be 'auto', 'equal' or 'proportional', got {targets_mode!r}"
+        )
+    if grouping != "popularity" and metadata_path is None:
+        raise ValueError(f"grouping={grouping!r} requires metadata_path")
     raw = load_ratings(path)
     filtered = k_core(raw, min_interactions=min_interactions)
     train, test = leave_one_out(filtered)
@@ -402,7 +441,30 @@ def load_benchmark(
         scoring_similarity = top_k_neighbours(similarity, topk=topk_neighbours)
 
     popularity = np.asarray(matrix.sum(axis=0)).ravel()
-    catalogue_groups = popularity_tiers(popularity, n_tiers=n_groups)
+    group_names: list[str] | None = None
+    if grouping == "popularity":
+        catalogue_groups = popularity_tiers(popularity, n_tiers=n_groups)
+    else:
+        from benchmarks.metadata import (
+            category_groups,
+            load_metadata,
+            vendor_tiers,
+        )
+
+        metadata = load_metadata(metadata_path)
+        if grouping == "vendor":
+            catalogue_groups = vendor_tiers(item_ids, metadata, n_tiers=n_groups)
+        else:
+            catalogue_groups, group_names = category_groups(
+                item_ids, metadata, n_groups=n_groups
+            )
+
+    # Real categories are unequal by nature; equal-sized tiers are not. Defaulting the
+    # target shape from the partition keeps a caller from silently asking a 36-item
+    # category for the same exposure as a 121-item one.
+    proportional = targets_mode == "proportional" or (
+        targets_mode == "auto" and grouping == "category"
+    )
 
     item_position = {iid: j for j, iid in enumerate(item_ids)}
     held_out = {
@@ -453,14 +515,23 @@ def load_benchmark(
             else np.ones_like(candidate_scores)
         )
 
+        candidate_groups = catalogue_groups[candidates]
+        # Targets follow the candidate set rather than the catalogue: the fairness term
+        # only ever sees these n items, so a target derived from catalogue-wide shares
+        # would be unattainable for any user whose retrieval happened to skew.
+        instance_targets = (
+            proportional_targets(candidate_groups, k) if proportional else None
+        )
+
         instances.append(
             RerankInstance(
                 relevance=normalised,
                 similarity=candidate_similarity(similarity, candidates),
                 k=k,
-                groups=catalogue_groups[candidates],
+                groups=candidate_groups,
                 lam=lam,
                 mu=mu,
+                targets=instance_targets,
                 item_ids=[int(c) for c in candidates],
             )
         )
@@ -485,6 +556,9 @@ def load_benchmark(
                 np.mean([i.similarity.mean() for i in instances]) if instances else 0.0
             ),
             "suggested_lam": suggest_lam(instances),
+            "grouping": grouping,
+            "targets_mode": "proportional" if proportional else "equal",
+            "group_names": group_names,
         },
     )
 

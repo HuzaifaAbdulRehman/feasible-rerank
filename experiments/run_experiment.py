@@ -137,6 +137,13 @@ def build_benchmark(cfg: dict) -> Benchmark:
             lam=cfg.get("lam", 1.0),
             mu=cfg.get("mu", 0.0),
             seed=cfg.get("seed", 0),
+            grouping=data.get("grouping", "popularity"),
+            metadata_path=(
+                ROOT / dataset["metadata_path"]
+                if dataset.get("metadata_path")
+                else None
+            ),
+            targets_mode=data.get("targets_mode", "auto"),
         )
 
     if source == "movielens":
@@ -216,6 +223,10 @@ PER_USER_METRICS = (
     "recall@k",
     "category_coverage",
     "exposure_parity",
+    # The equal-share reading of the same selections. Identical to `exposure_parity`
+    # unless the benchmark declares per-group targets, which only the real-category
+    # groupings do.
+    "exposure_parity_equal",
     "intra_list_sim",
 )
 
@@ -249,7 +260,19 @@ def score_selections(bench: Benchmark, raw_selections: list[list[int]]) -> Score
 
         out["ndcg@k"].append(ndcg_at_k(inst.relevance, sel))
         out["category_coverage"].append(category_coverage(inst.groups, sel))
-        out["exposure_parity"].append(exposure_parity(inst.groups, sel))
+        # Scored against the instance's *own* declared targets. Grading a run that
+        # optimises proportional targets against an equal-share yardstick is the exact
+        # error that manufactured a fake accuracy/fairness trade-off in the first
+        # version of experiments/ablation.py -- the method is then penalised for hitting
+        # the target it was given. Where targets are None (every popularity-tier and
+        # genre benchmark) this is identically the equal-share definition, so no
+        # previously published number moves.
+        out["exposure_parity"].append(
+            exposure_parity(inst.groups, sel, inst.targets)
+        )
+        # Reported alongside regardless, so a reader can see both definitions rather
+        # than having to trust that the right one was chosen.
+        out["exposure_parity_equal"].append(exposure_parity(inst.groups, sel))
         out["intra_list_sim"].append(intra_list_similarity(inst.similarity, sel))
         if has_ground_truth:
             # Users whose held-out item never entered the candidate set score 0 rather
@@ -288,6 +311,7 @@ def evaluate_solver(solver, bench: Benchmark, measure: bool = True) -> dict:
     ndcgs = scored.per_user["ndcg@k"]
     covs = scored.per_user["category_coverage"]
     parities = scored.per_user["exposure_parity"]
+    parities_equal = scored.per_user["exposure_parity_equal"]
     ils = scored.per_user["intra_list_sim"]
     recalls = scored.per_user["recall@k"]
     catalogue_selections = scored.catalogue_selections
@@ -312,6 +336,11 @@ def evaluate_solver(solver, bench: Benchmark, measure: bool = True) -> dict:
         "recall@k": float(np.mean(recalls)) if recalls else None,
         "category_coverage": float(np.mean(covs)),
         "exposure_parity": float(np.mean(parities)),
+        # The equal-share reading of the same lists. Identical to the line above unless
+        # the benchmark declares per-group targets, and reported always so that a claim
+        # about a proportional-target benchmark can be checked against the other
+        # definition instead of taken on trust.
+        "exposure_parity_equal": float(np.mean(parities_equal)),
         "intra_list_sim": float(np.mean(ils)),
         "catalogue_coverage": catalogue_coverage(catalogue_selections, bench.n_catalogue),
         "gini": gini(exposure),

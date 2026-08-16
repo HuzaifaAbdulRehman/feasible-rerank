@@ -405,13 +405,17 @@ stronger claim was true of the regime it was measured in and false in general.
 
 ```bash
 pip install -r requirements.txt
-pytest tests/                                    # 308 tests
+pytest tests/                                    # 345 tests
 
 curl --create-dirs -o data/amazon_lb/Luxury_Beauty.csv \
   https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Luxury_Beauty.csv
 
+# --method is required to reproduce the committed CSVs: without it the protocol also
+# tunes qubo_sa, which meets no budget on any benchmark and is excluded from the
+# cross-dataset comparison for that reason.
 python experiments/protocol.py --config configs/amazon_lb.yaml \
-  --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80
+  --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
+  --method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible
 python experiments/compare_datasets.py
 python experiments/paired.py --config configs/amazon_lb.yaml --lam 0.0 --mu 1.0 \
   --n-users 200 --reference quota_mmr

@@ -33,6 +33,7 @@ from experiments.run_experiment import (
     present,
     run,
     run_repeats,
+    score_selections,
 )
 from experiments.tables import markdown_table, repeats_table
 
@@ -321,3 +322,59 @@ class TestTables:
         assert "| mmr |" in rendered
         assert "| quota_mmr |" in rendered
         assert "over 2 seeds" in rendered
+
+
+class TestParityIsScoredAgainstDeclaredTargets:
+    """Regression test for a bug that manufactures a fake accuracy/fairness trade-off.
+
+    ``exposure_parity`` takes an optional target vector. If the scorer omits it while
+    the benchmark declares proportional targets, every method is graded against equal
+    share regardless of what it was asked to optimise -- so a method that hits its
+    target exactly is recorded as unfair, and the method that ignored the target scores
+    better. The first version of ``experiments/ablation.py`` shipped exactly this error,
+    and it produced a plausible trade-off curve that was entirely an artefact.
+    """
+
+    def _bench(self, targets):
+        from benchmarks.loader import Benchmark
+        from qubo_rerank.problem import RerankInstance
+
+        groups = np.array([0, 0, 0, 0, 0, 0, 1, 1])
+        inst = RerankInstance(
+            relevance=np.linspace(1.0, 0.1, 8),
+            similarity=np.eye(8),
+            k=4,
+            groups=groups,
+            targets=targets,
+        )
+        return Benchmark(instances=[inst], relevant=[set()], n_catalogue=8,
+                         catalogue_groups=groups, stats={})
+
+    def test_declared_targets_are_used(self):
+        """A 3/1 split is perfect under 3:1 targets and off by 1 under equal share."""
+        selection = [[0, 1, 2, 6]]
+
+        proportional = score_selections(self._bench({0: 3.0, 1: 1.0}), selection)
+        equal = score_selections(self._bench(None), selection)
+
+        assert proportional.per_user["exposure_parity"][0] == pytest.approx(0.0)
+        assert equal.per_user["exposure_parity"][0] > 0.0
+
+    def test_equal_share_reading_is_reported_alongside(self):
+        """Both definitions are emitted so the choice is visible rather than implicit."""
+        selection = [[0, 1, 2, 6]]
+
+        scored = score_selections(self._bench({0: 3.0, 1: 1.0}), selection)
+
+        assert scored.per_user["exposure_parity"][0] == pytest.approx(0.0)
+        assert scored.per_user["exposure_parity_equal"][0] > 0.0
+
+    def test_without_targets_the_two_readings_agree(self):
+        """The fix must not move any previously published number, all of which come
+        from benchmarks that declare no targets."""
+        scored = score_selections(self._bench(None), [[0, 1, 2, 6]])
+
+        assert (
+            scored.per_user["exposure_parity"][0]
+            == scored.per_user["exposure_parity_equal"][0]
+        )

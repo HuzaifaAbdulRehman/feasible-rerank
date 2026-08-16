@@ -479,3 +479,116 @@ class TestSparseSimilarity:
 
         for a, b in zip(forced_sparse.instances, forced_dense.instances, strict=True):
             assert np.allclose(a.similarity, b.similarity)
+
+
+@pytest.fixture
+def metadata_gz(tmp_path: Path) -> Path:
+    """Synthetic metadata for the items in :func:`ratings_csv`, in the export's format.
+
+    Vendors are deliberately anti-correlated with popularity -- the ten *least* popular
+    items get the largest vendor -- so that a test asserting the vendor partition
+    differs from the popularity partition cannot pass by accident.
+    """
+    import gzip
+    import json
+
+    records = []
+    for j in range(40):
+        if j >= 30:
+            vendor, category = "Megacorp", "Utilities"
+        elif j >= 20:
+            vendor, category = "Midco", "Games"
+        else:
+            vendor, category = f"Indie{j}", "Education"
+        records.append(
+            {"asin": f"item{j:03d}", "brand": vendor, "category": ["Root", category]}
+        )
+
+    path = tmp_path / "meta.json.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as fh:
+        for record in records:
+            fh.write(json.dumps(record) + "\n")
+    return path
+
+
+class TestGrouping:
+    """The ``grouping`` argument, which selects which fairness axis the term acts on."""
+
+    def test_defaults_to_popularity_and_needs_no_metadata(self, ratings_csv):
+        bench = load_benchmark(ratings_csv, n_users=5, n_candidates=10, k=3)
+
+        assert bench.stats["grouping"] == "popularity"
+        assert bench.stats["targets_mode"] == "equal"
+        assert all(inst.targets is None for inst in bench.instances)
+
+    def test_vendor_grouping_differs_from_popularity(self, ratings_csv, metadata_gz):
+        """The point of a seller partition is that it is a *different* question. If it
+        reproduced the popularity tiers it would be a second name for one result."""
+        popularity = load_benchmark(ratings_csv, n_users=5, n_candidates=10, k=3)
+        vendor = load_benchmark(
+            ratings_csv, n_users=5, n_candidates=10, k=3,
+            grouping="vendor", metadata_path=metadata_gz,
+        )
+
+        assert vendor.stats["grouping"] == "vendor"
+        assert not np.array_equal(
+            popularity.catalogue_groups, vendor.catalogue_groups
+        )
+
+    def test_category_grouping_names_its_groups(self, ratings_csv, metadata_gz):
+        bench = load_benchmark(
+            ratings_csv, n_users=5, n_candidates=10, k=3, n_groups=3,
+            grouping="category", metadata_path=metadata_gz,
+        )
+
+        assert bench.stats["group_names"][-1] == "other"
+        assert "Education" in bench.stats["group_names"]
+
+    def test_category_grouping_defaults_to_proportional_targets(
+        self, ratings_csv, metadata_gz
+    ):
+        """Real categories are unequal, so equal share would demand a composition the
+        catalogue cannot supply. Auto mode must notice that without being told."""
+        bench = load_benchmark(
+            ratings_csv, n_users=5, n_candidates=10, k=3,
+            grouping="category", metadata_path=metadata_gz,
+        )
+
+        assert bench.stats["targets_mode"] == "proportional"
+        for inst in bench.instances:
+            assert sum(inst.targets.values()) == pytest.approx(inst.k)
+
+    def test_targets_are_derived_per_candidate_set_not_per_catalogue(
+        self, ratings_csv, metadata_gz
+    ):
+        """Each user retrieves a different slice, so a catalogue-wide target would be
+        unattainable for any user whose candidates skew. Distinct target vectors across
+        users are the observable consequence."""
+        bench = load_benchmark(
+            ratings_csv, n_users=10, n_candidates=10, k=3,
+            grouping="category", metadata_path=metadata_gz,
+        )
+
+        seen = {tuple(sorted(i.targets.items())) for i in bench.instances}
+        assert len(seen) > 1
+
+    def test_targets_mode_can_be_forced(self, ratings_csv, metadata_gz):
+        bench = load_benchmark(
+            ratings_csv, n_users=5, n_candidates=10, k=3,
+            grouping="category", metadata_path=metadata_gz, targets_mode="equal",
+        )
+
+        assert bench.stats["targets_mode"] == "equal"
+        assert all(inst.targets is None for inst in bench.instances)
+
+    def test_metadata_grouping_without_a_path_is_rejected(self, ratings_csv):
+        with pytest.raises(ValueError, match="requires metadata_path"):
+            load_benchmark(ratings_csv, n_users=5, grouping="vendor")
+
+    def test_unknown_grouping_is_rejected(self, ratings_csv):
+        with pytest.raises(ValueError, match="grouping must be"):
+            load_benchmark(ratings_csv, n_users=5, grouping="seller")
+
+    def test_unknown_targets_mode_is_rejected(self, ratings_csv):
+        with pytest.raises(ValueError, match="targets_mode must be"):
+            load_benchmark(ratings_csv, n_users=5, targets_mode="uniform")

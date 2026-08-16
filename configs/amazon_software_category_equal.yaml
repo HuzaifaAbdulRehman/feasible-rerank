@@ -1,0 +1,57 @@
+# Amazon Software, real product categories, EQUAL targets -- the control.
+#
+# This config exists to isolate one variable. Run against proportional targets
+# (amazon_software_category.yaml), quota_mmr cannot meet any fairness budget below 1.00
+# on the real category partition, while the QUBO methods reach 0.20. The obvious
+# objection is that the real-category partition is simply harder than the popularity
+# tiers used elsewhere, and that the target *shape* has nothing to do with it.
+#
+# This run answers that. Same catalogue, same partition, same grids, same seeds --
+# only `targets_mode` differs. If quota_mmr recovers here, the cause is isolated to the
+# target definition rather than to the partition, and the claim is demonstrated instead
+# of merely asserted.
+#
+# Prediction, recorded before the run so it cannot be fitted afterwards: quota_mmr
+# should recover to roughly the 0.25-0.30 reach it achieves on every equal-target
+# benchmark, because round-robin integer quotas are near-optimal when every group's
+# target is k/|C|. If it does not recover, the proportional-target explanation is wrong
+# and the finding must be withdrawn.
+#
+# Setup is identical to amazon_software_category.yaml; see that file for the download
+# commands and the coverage figures.
+
+seed: 0
+measure_energy: true
+
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Software/Software.csv
+  metadata_path: data/amazon_Software/meta_Software.json.gz
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 200
+  n_groups: 4
+  k: 10
+  grouping: category
+  targets_mode: equal        # the only line that differs from the proportional run
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

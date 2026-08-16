@@ -147,6 +147,64 @@ takes an arbitrary target vector, which is where per-seller contracts or regulat
 quotas would go. That is an expressiveness argument for the formulation, independent of
 solution quality, and it is the strongest case for the approach that this project has.
 
+<a id="proportional-targets"></a>
+
+### The expressiveness argument, measured on real categories
+
+The table above is a constructed instance, so it shows that the two formulations *can*
+differ, not that the difference matters on data anyone would deploy against. Amazon's
+metadata export supplies the missing piece: the filtered Software catalogue splits into
+real product categories of genuinely unequal size — Digital Software 121, Antivirus &
+Security 116, Business & Office 77, and a pooled remainder — and the natural target for
+such a partition is proportional, not equal.
+
+Run under the full disjoint-split protocol (3 seeds, 80 users, every method tuned over
+its own grid), the expressiveness gap stops being an abstraction:
+
+| method | reach, equal targets | reach, proportional targets |
+|---|---|---|
+| greedy_topk | never | never |
+| mmr | never | never |
+| quota_mmr | **0.30** | **never** |
+| qubo_tabu | 0.20 | 0.20 |
+| qubo_feasible | 0.20 | 0.20 |
+
+`quota_mmr` does not merely get worse. It stops being able to meet *any* budget below
+1.00, at any setting of its own `mmr_lam`, while both QUBO variants are unmoved — and
+`qubo_tabu` is simultaneously the most accurate method at its reach (0.9500 against
+`quota_mmr`'s 0.9147). This is the only benchmark in the repository where a QUBO variant
+wins both axes outright.
+
+**The control, and why it was necessary.** The obvious objection is that real categories
+are simply a harder partition than popularity tiers, and that the target vector has
+nothing to do with it. `configs/amazon_software_category_equal.yaml` isolates that: same
+catalogue, same partition, same grids, same seeds, with `targets_mode` the only line
+changed. Its prediction was written into the config file *before* the run — that
+`quota_mmr` should recover to roughly the 0.25–0.30 it reaches on every equal-target
+benchmark, and that if it did not, the proportional-target explanation was wrong and the
+finding would be withdrawn.
+
+It recovered, on all three seeds, by more than a factor of two on the same selections:
+
+| seed | parity vs declared (proportional) | parity vs equal share |
+|---|---|---|
+| 0 | 0.6080 | 0.2650 |
+| 1 | 0.5908 | 0.2600 |
+| 2 | 0.5885 | 0.2575 |
+
+So the mechanism is identified rather than asserted. Quota-MMR allocates integer quotas
+round-robin, which is near-optimal when every target is `k/|C|` and structurally unable to
+represent targets of 3.6 / 1.15 / 0.95 / 4.3. Its fairness machinery drives it toward
+equal share and therefore *away* from the stated requirement — which is why it is also
+beaten by plain `mmr` on parity at some budgets here. The QUBO consumes the target vector
+as an input and needs no modification at all.
+
+Both readings of parity are reported in the CSVs (`exposure_parity` against the declared
+targets, `exposure_parity_equal` against equal share) so this claim can be checked rather
+than taken on trust. That column exists because the first version of this experiment
+scored proportional-target runs against equal-share parity — the same error, in the same
+place, as the first version of the ablation above.
+
 **Candidate-set size changes little.** Across n = 50/100/200 the ranking is stable except
 for the `qubo_feasible` vs `quota_mmr` swap already known to be within noise. `qubo_tabu`
 holds up (0.9153 → 0.8981) while `qubo_feasible` degrades faster (0.9006 → 0.8435),

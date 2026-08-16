@@ -1,0 +1,68 @@
+# Amazon Software, partitioned by SELLER rather than by popularity.
+#
+# Every other benchmark in this project groups items by something derived: popularity
+# tiers here and on the other Amazon catalogues, genre buckets on MovieLens. Both are
+# defensible proxies, but the fairness question a marketplace operator actually faces is
+# about sellers, and until the metadata export was joined in this repository could not
+# ask it. This config asks it.
+#
+# Download once:
+#   curl --create-dirs -o data/amazon_Software/Software.csv \
+#     https://mcauleylab.ucsd.edu/public_datasets/data/amazon_v2/categoryFilesSmall/Software.csv
+#   python benchmarks/metadata.py --download Software \
+#     --out data/amazon_Software/meta_Software.json.gz
+#
+# Coverage on the 5-core-filtered catalogue: 722 of 727 items carry a brand (99.3%).
+# The same file is 0.1% populated for Luxury Beauty, which is why this grouping is
+# offered per-catalogue rather than turned on globally -- see benchmarks/metadata.py,
+# where the coverage guard refuses to build a partition that would silently collapse to
+# a single group and make every method look perfectly fair.
+#
+# Groups are vendor-*concentration tiers*, not vendor names: items are rank-ordered by
+# their vendor's catalogue size and cut into four equal-sized buckets, tier 0 being the
+# major publishers (Microsoft 99 items, Intuit 95, Corel 63, Symantec 61) and tier 3 the
+# independents. Naming each of the 122 vendors as its own group would leave most groups
+# empty in any 200-item candidate set and make the equal-share target unattainable by
+# construction -- which would manufacture the feasibility result this project reports
+# rather than measure it.
+#
+# This is not the popularity partition relabelled. Measured agreement with it:
+# NMI 0.0119, ARI +0.0067, where 1.0 would mean identical. Reproduce with:
+#   python benchmarks/metadata.py --data data/amazon_Software/Software.csv \
+#     --meta data/amazon_Software/meta_Software.json.gz
+
+seed: 0
+measure_energy: true
+
+lam: 4.0
+mu: 0.0
+
+dataset:
+  source: amazon
+  path: data/amazon_Software/Software.csv
+  metadata_path: data/amazon_Software/meta_Software.json.gz
+  min_interactions: 5
+  topk_neighbours: 100
+  shrink: 100.0
+  binary: true
+
+data:
+  n_users: 200
+  n_items: 200
+  n_groups: 4
+  k: 10
+  grouping: vendor           # seller-concentration tiers; tier 0 is the major publishers
+  targets_mode: auto         # equal share, since the tiers are equal-sized by construction
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120

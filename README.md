@@ -13,7 +13,7 @@ instead selects the *entire list at once* as a Quadratic Unconstrained Binary Op
 the energy cost of doing so.
 
 > Status: **complete**, apart from a QPU run that is export-blocked from this region.
-> End-to-end on real data across 6 benchmarks, every headline comparison averaged over
+> End-to-end on real data across 8 benchmarks, every headline comparison averaged over
 > repeated seeds with paired significance testing, checked against mixed-integer-proven
 > optima, and built around a negative result about the standard QUBO recipe that turned
 > out to be the most interesting thing here.
@@ -69,14 +69,20 @@ where `x_i ∈ {0,1}` indicates whether item *i* enters the list.
    accuracy gap closes: 0.9033 ± 0.0115 against 0.9043 ± 0.0109. A paired test over 200
    users finds that residual gap is *real* — p ≈ 2×10⁻⁷ — and that its median size is
    **0.0012 NDCG**. Certain, and negligible.
-4. **That feasibility result holds on 6 of 6 benchmarks**, spanning 77× in catalogue
-   size and 63× in density, across two domains, two group definitions and **two
+4. **That feasibility result holds on 8 of 8 benchmarks**, spanning 77× in catalogue
+   size and 63× in density, across two domains, **four group definitions** and **two
    retrieval models**. On MovieLens the groups are curator-assigned genres rather than
    popularity tiers; on `amazon_lb_mf` the candidates come from matrix factorisation
-   rather than ItemKNN. Together those close the two obvious objections — that the QUBO
-   only wins because the groups are defined by the signal it exploits, and that it only
-   wins because of ItemKNN's particular bias.
-5. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
+   rather than ItemKNN; and two Software benchmarks group by **real seller** and **real
+   product category** taken from Amazon's metadata export. Together those close the two
+   obvious objections — that the QUBO only wins because the groups are defined by the
+   signal it exploits, and that it only wins because of ItemKNN's particular bias.
+5. **Where the exposure targets are proportional rather than equal, quota-MMR fails
+   outright** — it meets no budget below 1.00 on real product categories, while the QUBO
+   is unaffected at 0.20 *and* more accurate. A matched ablation changing only the target
+   vector isolates the cause: round-robin integer quotas cannot represent a proportional
+   target.
+6. **It still costs ~100× the compute** (16.1 s against 0.16), and `quota_mmr` still
    wins intra-list similarity outright.
 
 (1) is why (3) is worth trusting: without the barrier fix the solver never optimises
@@ -199,29 +205,44 @@ tests the constraint against categories defined independently of the data being 
 | Digital Music | 11,268 | 0.0007 | popularity tier | ItemKNN |
 | **MovieLens 100K** | 1,349 | 0.0773 | **genre** | ItemKNN |
 | **Luxury Beauty (MF)** | 1,366 | 0.0067 | popularity tier | **ALS** |
+| **Software (seller)** | 729 | 0.0096 | **real vendor** | ItemKNN |
+| **Software (category)** | 729 | 0.0096 | **real product category** | ItemKNN |
+
+The last two use Amazon's separate metadata export rather than a partition derived from
+the interaction counts being evaluated: 99.3% of the filtered Software catalogue carries a
+brand and 93.5% a category path. Both partitions are near-independent of the popularity
+tiers (NMI 0.012 and 0.016, where 1.0 would mean identical), so they ask a different
+fairness question rather than restating the existing one. See
+[`benchmarks/metadata.py`](benchmarks/metadata.py).
 
 **Reach** — the tightest fairness budget each method meets *on every seed*. Lower is a
 stronger guarantee:
 
-| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | LB (MF) |
-|---|---|---|---|---|---|---|
-| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 | 0.30 |
-| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** |
-| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | LB (MF) | SW seller | SW category |
+|---|---|---|---|---|---|---|---|---|
+| quota_mmr | 0.25 | 0.30 | 0.30 | 0.30 | 0.25 | 0.30 | 0.30 | *never* |
+| **qubo_tabu** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** | **0.20** | **0.20** |
+| **qubo_feasible** | **0.20** | **0.22** | **0.22** | **0.20** | **0.20** | **0.20** | **0.20** | **0.20** |
 
 `greedy_topk` and `mmr` are omitted: neither meets any budget on most benchmarks.
 
 NDCG@10 delivered at that tightest budget:
 
-| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens |
-|---|---|---|---|---|---|
-| quota_mmr | 0.5540 | 0.9034 | 0.8398 | 0.9033 | **0.9069** |
-| **qubo_tabu** | **0.7589** | 0.9044 | 0.8457 | 0.9026 | 0.9009 |
-| qubo_feasible | 0.7253 | 0.8475 | 0.7573 | 0.8333 | 0.8111 |
+| method | Gift Cards | Luxury Beauty | Digital Music | Software | MovieLens | SW seller | SW category |
+|---|---|---|---|---|---|---|---|
+| quota_mmr | 0.5540 | 0.9034 | 0.8398 | 0.9033 | **0.9069** | **0.9445** | 0.9147 |
+| **qubo_tabu** | **0.7589** | 0.9044 | 0.8457 | 0.9026 | 0.9009 | 0.9428 | **0.9500** |
+| qubo_feasible | 0.7253 | 0.8475 | 0.7573 | 0.8333 | 0.8111 | 0.8747 | 0.9116 |
+
+The `SW category` column is the only benchmark where a QUBO variant wins **both** axes
+outright: `quota_mmr` meets no budget at any setting of its own hyperparameter, while
+`qubo_tabu` reaches 0.20 *and* is more accurate. That column also carries the only
+proportional target vector in the table, and the two facts are causally linked — see the
+ablation in [docs/findings.md](docs/findings.md#proportional-targets).
 
 ![cross-dataset fairness budget curves](results/datasets_budget.png)
 
-**Holds on 6 of 6.** Gift Cards is the interesting one — it was included precisely
+**Holds on 8 of 8.** Gift Cards is the interesting one — it was included precisely
 because it was the case most likely to break the result, being small and dense enough
 that a greedy heuristic has room to do well. Instead the QUBO wins *both* axes there:
 a tighter reach **and** +0.20 NDCG at it. That matches what the config predicted before
@@ -236,15 +257,29 @@ whole allocation at once and reaches the floor. Gift Cards' smaller candidate se
 loosens the constraint enough for quota-MMR to reach 0.25, which is consistent with the
 same explanation.
 
-**Two benchmarks close the two obvious objections.**
+**Four benchmarks close the obvious objections.**
 
-*MovieLens closes the group objection.* Every other benchmark groups items by
-popularity tier — a partition derived from the very interaction counts being evaluated,
-so a sceptic can reasonably say the QUBO only wins because those groups are structurally
-easy to balance. MovieLens groups by genre, assigned by the dataset's curators, and the
-result is unchanged: reach 0.20 against quota-MMR's 0.25. Note also that quota-MMR is
-*slightly more accurate* there (0.9069 vs 0.9009) while still unable to meet the tighter
-budget — which is the whole claim in one row.
+*MovieLens and the Software metadata runs close the group objection.* The Amazon
+benchmarks group items by popularity tier — a partition derived from the very
+interaction counts being evaluated, so a sceptic can reasonably say the QUBO only wins
+because those groups are structurally easy to balance. Three benchmarks answer that with
+groups the QUBO cannot have engineered:
+
+- **MovieLens** groups by genre, assigned by the dataset's curators. Reach 0.20 against
+  quota-MMR's 0.25. Note also that quota-MMR is *slightly more accurate* there (0.9069 vs
+  0.9009) while still unable to meet the tighter budget — the whole claim in one row.
+- **Software (seller)** groups by real vendor concentration, from Amazon's metadata
+  export. Reach 0.20 against quota-MMR's 0.30, unchanged from the popularity-tier run on
+  the same catalogue.
+- **Software (category)** groups by real product category. Reach 0.20 against quota-MMR
+  *never meeting any budget*.
+
+The seller and category partitions are near-independent of the popularity tiers they
+replace (NMI 0.012 and 0.016), so this is a different question rather than the same one
+relabelled.
+
+*`amazon_lb_mf` closes the model objection* by drawing candidates from matrix
+factorisation rather than ItemKNN.
 
 **This is the strongest claim in the repo**, and it is a claim about *when* to use the
 method rather than that the method is better: below a group-exposure requirement of
@@ -332,16 +367,31 @@ python experiments/sweep.py --config configs/amazon_lb.yaml --n-users 40
 
 # the honest comparison: tune every method on one half of the users, evaluate on the
 # other, sweep the fairness budget. This is the one to run if you only run one.
+#
+# --method is not optional if you want to reproduce the committed CSVs. Without it the
+# protocol also tunes `qubo_sa`, which adds 9 configurations per seed of the slowest
+# solver to reproduce a result the repo already establishes four other ways: penalty-
+# encoded cardinality defeats a single-flip annealer, so `qubo_sa` meets no budget on
+# any benchmark. It is excluded from the cross-dataset comparison for that reason, not
+# because it lost a close race. Run `--method qubo_sa` on its own to see it fail.
 python experiments/protocol.py --config configs/amazon_lb.yaml \
-  --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80
+  --tau 0.20 0.22 0.25 0.30 0.40 1.00 --repeats 3 --n-users 80 \
+  --method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible
 
 # paired per-user significance tests -- Wilcoxon, Holm-corrected across the family
 python experiments/paired.py --config configs/amazon_lb.yaml --lam 0.0 --mu 1.0   --n-users 200 --reference quota_mmr
 
 # does the result survive a change of catalogue? Run the protocol on the others first;
 # each config carries its own download command.
-python experiments/protocol.py --config configs/amazon_software.yaml  --repeats 3 --n-users 80
-python experiments/protocol.py --config configs/amazon_giftcards.yaml --repeats 3 --n-users 80
+METHODS="--method greedy_topk mmr quota_mmr qubo_tabu qubo_feasible"
+python experiments/protocol.py --config configs/amazon_software.yaml  --repeats 3 --n-users 80 $METHODS
+python experiments/protocol.py --config configs/amazon_giftcards.yaml --repeats 3 --n-users 80 $METHODS
+
+# the same catalogue partitioned by real seller and real product category instead of by
+# popularity tier -- these need the metadata export, see benchmarks/metadata.py
+python experiments/protocol.py --config configs/amazon_software_vendor.yaml   --repeats 3 --n-users 80 $METHODS
+python experiments/protocol.py --config configs/amazon_software_category.yaml --repeats 3 --n-users 80 $METHODS
+
 python experiments/compare_datasets.py
 
 # figures. plot_pareto picks up the matched baselines automatically -- do not pass
@@ -381,11 +431,16 @@ even a tie-break change shifts candidate sets slightly.
 - **Candidates:** top-200 by ItemKNN, reranked down to k=10. QUBO is O(n²), so a full
   catalogue is infeasible; two-stage retrieval → rerank is also how production systems
   work. The scaling limit is documented, not hidden.
-- **Groups:** popularity tiers, not categories — the ratings export carries no metadata.
-  Items are rank-ordered by training interaction count and cut into 4 equal-sized tiers
-  (tier 0 = short head), the standard short-head/long-tail partition from the
-  popularity-bias literature. This makes the fairness term fight the exact bias ItemKNN
-  exhibits, rather than a partition chosen to flatter it.
+- **Groups:** popularity tiers by default, because the *ratings* export carries no
+  metadata. Items are rank-ordered by training interaction count and cut into 4
+  equal-sized tiers (tier 0 = short head), the standard short-head/long-tail partition
+  from the popularity-bias literature. This makes the fairness term fight the exact bias
+  ItemKNN exhibits, rather than a partition chosen to flatter it. Amazon's *separate*
+  metadata export does carry real sellers and categories where it is populated, and
+  those partitions are available via `grouping="vendor"` / `grouping="category"` — see
+  [`benchmarks/metadata.py`](benchmarks/metadata.py). Coverage decides where: 99.3% of
+  the filtered Software catalogue has a brand, against 0.1% of Luxury Beauty, so the
+  loader refuses the grouping rather than silently collapsing to a single group.
 - **Recall ceiling:** candidates come from the same model being reranked, so a held-out
   item is often not in the candidate set at all. `candidate_hit_rate` reports that ceiling
   explicitly (**0.49** here) — recall@10 must be read against it, not against 1.0.
@@ -403,7 +458,7 @@ benchmarks/         synthetic · Amazon (ItemKNN) · MovieLens (genres) · ALS f
 experiments/        run_experiment · sweep · protocol · paired · sensitivity ·
                     optimality · exact · ablation · compare_datasets · plots
 configs/            YAML configs: synthetic, 4 Amazon categories, MovieLens, MF
-tests/              308 tests · 66% line coverage
+tests/              345 tests · 66% line coverage
 ```
 
 A written-up version of the findings, with method and limitations, is in
@@ -416,6 +471,7 @@ A written-up version of the findings, with method and limitations, is in
 | [`qubo_rerank/solvers/feasible.py`](qubo_rerank/solvers/feasible.py) | the constraint-preserving annealer, and the response to the penalty-barrier finding |
 | [`tests/test_solvers.py`](tests/test_solvers.py) | `TestPenaltyBarrier` — the four tests that hold the headline claim up |
 | [`benchmarks/loader.py`](benchmarks/loader.py) | the real-data pipeline; ItemKNN in ~40 lines of scipy rather than 2.5 GB of torch |
+| [`benchmarks/metadata.py`](benchmarks/metadata.py) | real seller and category partitions, and the coverage guard that stops a blank metadata file from becoming a fake result |
 | [`experiments/protocol.py`](experiments/protocol.py) | the tune-on-half / evaluate-on-the-other-half protocol the headline claim rests on |
 
 ## Roadmap
