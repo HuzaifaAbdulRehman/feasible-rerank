@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from benchmarks.loader import Benchmark, load_benchmark
+from benchmarks.matrix_factorisation import load_mf_benchmark
 from benchmarks.movielens import load_movielens
 from benchmarks.synthetic import make_users
 from qubo_rerank.metrics.dpfr import (
@@ -157,8 +158,29 @@ def build_benchmark(cfg: dict) -> Benchmark:
             seed=cfg.get("seed", 0),
         )
 
+    if source == "mf":
+        # Same data and protocol as the amazon path; ALS replaces ItemKNN as the model
+        # that produces both the relevance scores and the similarity matrix. That is the
+        # point -- it isolates the retrieval model as the only thing that changed.
+        return load_mf_benchmark(
+            path=ROOT / dataset.get("path", "data/amazon_lb/Luxury_Beauty.csv"),
+            n_users=data.get("n_users", 200),
+            n_candidates=data.get("n_items", 200),
+            k=data.get("k", 10),
+            n_groups=data.get("n_groups", 4),
+            min_interactions=dataset.get("min_interactions", 5),
+            factors=dataset.get("factors", 64),
+            iterations=dataset.get("iterations", 15),
+            reg=dataset.get("reg", 0.01),
+            alpha=dataset.get("alpha", 40.0),
+            lam=cfg.get("lam", 1.0),
+            mu=cfg.get("mu", 0.0),
+            seed=cfg.get("seed", 0),
+        )
+
     raise ValueError(
-        f"unknown dataset source {source!r}; expected 'synthetic', 'amazon' or 'movielens'"
+        f"unknown dataset source {source!r}; "
+        "expected 'synthetic', 'amazon', 'movielens' or 'mf'"
     )
 
 

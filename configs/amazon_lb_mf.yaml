@@ -1,0 +1,56 @@
+# Amazon Luxury Beauty, retrieved by matrix factorisation instead of ItemKNN.
+#
+# The single largest limitation in this project is that every result is conditioned on
+# one retrieval model. That is not a vague caveat: ItemKNN scores an item by similarity
+# to what a user already holds, which biases it toward popular items -- and popularity
+# tiers are exactly the groups the fairness term is scored on. So a sceptic can ask
+# whether the QUBO wins because it optimises fairness well, or because ItemKNN's
+# particular bias happens to be the one the constraint targets.
+#
+# This config holds everything else fixed -- same file, same 5-core filter, same
+# leave-one-out split, same candidate count, same popularity-tier groups -- and swaps
+# only the model. Implicit-feedback ALS (Hu, Koren & Volinsky 2008) scores by latent
+# factor agreement rather than co-occurrence.
+#
+# Two measured differences worth knowing before reading the results:
+#   candidate hit rate   0.533 against ItemKNN's 0.490 -- ALS retrieves better here
+#   mean similarity      0.108 against ItemKNN's 0.005 -- ~23x denser, because latent
+#                        factors give almost every pair a non-zero cosine
+#
+# The density difference matters for lam. A diversity weight tuned against a 0.005-mean
+# matrix means something different against a 0.108-mean one, which is why the protocol
+# re-tunes lam and mu per dataset rather than carrying them over.
+
+seed: 0
+measure_energy: true
+
+lam: 1.0
+mu: 0.0
+
+dataset:
+  source: mf
+  path: data/amazon_lb/Luxury_Beauty.csv
+  min_interactions: 5
+  factors: 64
+  iterations: 15
+  reg: 0.01
+  alpha: 40.0          # Hu et al.'s value; sets trust in an observed interaction
+
+data:
+  n_users: 200
+  n_items: 200
+  n_groups: 4
+  k: 10
+
+solvers:
+  greedy: true
+  mmr: true
+  quota_mmr: true
+  qubo_sa: true
+  qubo_tabu: true
+  qubo_feasible: true
+  mmr_lam: 0.5
+  num_reads: 100
+  tabu_reads: 10
+  num_restarts: 8
+  num_sweeps: 120
